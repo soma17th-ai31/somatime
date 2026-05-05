@@ -15,6 +15,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.dependencies import cookie_name_for, get_current_meeting, get_db
 from app.db.models import Meeting, Participant
 from app.schemas.participant import ParticipantCreate
@@ -70,12 +71,13 @@ def register_participant(
         db.refresh(participant)
         participant_id = participant.id
 
+    settings = get_settings()
     response.set_cookie(
         key=cookie_name_for(meeting.slug),
         value=token,
         httponly=True,
-        samesite="lax",
-        secure=False,
+        samesite=settings.COOKIE_SAMESITE,
+        secure=settings.COOKIE_SECURE,
         path="/",
     )
 

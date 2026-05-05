@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite:///./somameet.db"
     SESSION_SECRET: str = "dev-session-secret-change-me-32chars-minimum"
     APP_BASE_URL: str = "http://localhost:5173"
+    CORS_EXTRA_ORIGINS: str = ""
+
+    COOKIE_SAMESITE: str = "lax"
+    COOKIE_SECURE: bool = False
 
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
@@ -45,6 +49,14 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = ""
     ANTHROPIC_API_KEY: str = ""
     OPENAI_API_KEY: str = ""
+
+    @property
+    def cors_allowed_origins(self) -> List[str]:
+        origins = {self.APP_BASE_URL}
+        extra = self.CORS_EXTRA_ORIGINS.strip()
+        if extra:
+            origins.update(o.strip() for o in extra.split(",") if o.strip())
+        return sorted(origins)
 
     @property
     def google_oauth_scope_list(self) -> List[str]:
