@@ -1,0 +1,20 @@
+node_modules
+dist
+dist-node-tsbuild
+.env.local
+.env
+*.log
+*.tsbuildinfo
+.vite
+.DS_Store
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+
+# E2E ephemera (also covered by root *.db rule, listed here for clarity)
+e2e.db
+e2e.db-journal
+e2e.db-wal
+e2e.db-shm

@@ -1,0 +1,7 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//SomaMeet//Broken Fixture//EN
+BEGIN:VEVENT
+UID:broken@somameet.test
+DTSTART;TZID=Asia/Seoul:20260511T090000
+SUMMARY:no-end-no-vcalendar-close
