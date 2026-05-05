@@ -1,0 +1,15 @@
+fastapi>=0.109
+uvicorn[standard]>=0.27
+sqlalchemy>=2.0
+alembic>=1.13
+pydantic>=2.5
+pydantic-settings>=2.1
+python-dotenv>=1.0
+python-multipart>=0.0.7
+icalendar>=5.0
+httpx>=0.26
+google-auth>=2.27
+google-auth-oauthlib>=1.2
+google-api-python-client>=2.116
+google-generativeai>=0.4
+psycopg2-binary>=2.9
