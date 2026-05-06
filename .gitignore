@@ -1,0 +1,28 @@
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+backend/somameet.db
+
+# Environment
+.env
+backend/.env
+frontend/.env
+
+# Node
+node_modules/
+dist/
+frontend/.vite/
+frontend/.vercel/
+frontend/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor
+.idea/
+.vscode/

@@ -1,0 +1,17 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: somameet-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      SOMAMEET_DB_PATH: /data/somameet.db
+    ports:
+      - "${SOMAMEET_BACKEND_PORT:-18080}:8000"
+    volumes:
+      - somameet-data:/data
+
+volumes:
+  somameet-data:
