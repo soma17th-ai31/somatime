@@ -1,18 +1,28 @@
-"""Deterministic scheduling engine.
+"""Deterministic scheduling engine (v3).
 
 Pure code. NEVER calls an LLM. NEVER reads busy block titles/descriptions.
 
-Spec sections 6 and 6.1 are the source of truth for:
+Spec sections 4 / 7 / 7.1 are the source of truth for:
 - 30-min slot grid
 - weekday filter (include_weekends toggle)
 - time window
-- offline buffer
-- ranking (available_count desc, time-spread vs prior chosen >= 2h, earlier date)
-- fallback: drop 1 missing participant; if still empty, return ([], suggestion).
+- offline buffer (variable: 30/60/90/120, Q8)
+- date_mode: range vs picked (Q5)
+- ranking: available_count desc, time-spread vs prior chosen >= 2h, earlier date
+- fallback: drop 1 missing participant; if still empty, return ([], suggestion)
+
+v3 changes:
+- enumerate_search_dates(meeting) honors meeting.date_mode.
+- generate_candidate_windows(...) uses meeting.offline_buffer_minutes.
+- "any" now applies the same buffer as "offline" (Q8 — v2->v3 reversal).
+- deterministic_top_candidates(...) is the unified ranker for /calculate
+  AND /recommend's fallback path.
+- validate_and_enrich(...) re-validates LLM-supplied candidates against
+  windows; raises CandidateValidationError on any mismatch.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Dict, List, Optional, Sequence, Set, Tuple
 
@@ -20,8 +30,13 @@ from app.db.models import BusyBlock, Meeting, Participant
 from app.schemas.candidate import Candidate
 
 SLOT_MINUTES = 30
-BUFFER_MINUTES = 30
+BUFFER_MINUTES = 30  # legacy default, kept for backward-compat tests
 SPREAD_MIN_MINUTES = 120  # "2h+ apart" rule
+DEFAULT_MAX_WINDOWS = 40
+
+
+class CandidateValidationError(ValueError):
+    """Raised when an LLM-supplied candidate cannot be matched to a window."""
 
 
 @dataclass(frozen=True)
@@ -32,65 +47,319 @@ class Slot:
     end: datetime
 
 
+@dataclass(frozen=True)
+class CandidateWindow:
+    """A candidate window built deterministically (spec §7.1)."""
+
+    start: datetime
+    end: datetime
+    available_count: int
+    is_full_match: bool
+    available_nicknames: List[str] = field(default_factory=list)
+    missing_participants: List[str] = field(default_factory=list)
+
+
+# ============================================================================
+# Public v3 API
+# ============================================================================
+
+
+def enumerate_search_dates(meeting: Meeting) -> List[date]:
+    """Return all dates the scheduler should search.
+
+    range mode: every date between date_range_start and date_range_end
+                inclusive. include_weekends toggle filters Sat/Sun.
+    picked mode: exactly the dates listed in candidate_dates (no weekend
+                filter — picked dates are explicitly chosen).
+    """
+    mode = (getattr(meeting, "date_mode", None) or "range").lower()
+
+    if mode == "picked":
+        raw_dates = list(meeting.candidate_dates or [])
+        normalized: List[date] = []
+        for d in raw_dates:
+            if isinstance(d, date):
+                normalized.append(d)
+            elif isinstance(d, str):
+                normalized.append(date.fromisoformat(d))
+            else:
+                raise ValueError(f"unsupported candidate_date type: {type(d)!r}")
+        # Sort + de-duplicate while preserving order.
+        seen: Set[date] = set()
+        out: List[date] = []
+        for d in normalized:
+            if d not in seen:
+                seen.add(d)
+                out.append(d)
+        out.sort()
+        return out
+
+    # default: range mode
+    if meeting.date_range_start is None or meeting.date_range_end is None:
+        return []
+    out_range: List[date] = []
+    current = meeting.date_range_start
+    while current <= meeting.date_range_end:
+        if meeting.include_weekends or current.weekday() < 5:
+            out_range.append(current)
+        current += timedelta(days=1)
+    return out_range
+
+
+def generate_candidate_windows(
+    meeting: Meeting,
+    busy_blocks_by_participant: Dict[int, List[BusyBlock]],
+    *,
+    participants: Optional[Sequence[Participant]] = None,
+    max_windows: int = DEFAULT_MAX_WINDOWS,
+) -> List[CandidateWindow]:
+    """Deterministic candidate windows for a meeting.
+
+    Iterates the 30-min grid across enumerate_search_dates, applies
+    meeting.offline_buffer_minutes for offline AND any locations
+    (online == buffer 0), and returns up to max_windows windows ordered
+    by ranking (available_count desc, then earliest start).
+
+    Includes both full-match and partial-match windows so that LLM has
+    enough context to choose; consumers can filter as needed.
+    """
+    nickname_map = _nickname_map(participants, busy_blocks_by_participant)
+    participant_ids = list(nickname_map.keys())
+
+    slots = _enumerate_slots_v3(meeting)
+    if not slots:
+        return []
+
+    full_target = len(participant_ids)
+    windows: List[CandidateWindow] = []
+
+    for slot in slots:
+        available, missing = _check_slot(
+            slot=slot,
+            busy_blocks_by_participant=busy_blocks_by_participant,
+            buffer_minutes=_effective_buffer_minutes(meeting),
+            participant_ids=participant_ids,
+        )
+        if not available:
+            continue
+        windows.append(
+            CandidateWindow(
+                start=slot.start,
+                end=slot.end,
+                available_count=len(available),
+                is_full_match=(len(available) == full_target and full_target > 0),
+                available_nicknames=sorted(nickname_map[pid] for pid in available),
+                missing_participants=sorted(nickname_map[pid] for pid in missing),
+            )
+        )
+
+    # Rank: available_count desc, earlier start.
+    windows.sort(key=lambda w: (-w.available_count, w.start))
+    return windows[:max_windows]
+
+
+def deterministic_top_candidates(
+    windows: Sequence[CandidateWindow],
+    max_candidates: int = 3,
+) -> List[Candidate]:
+    """Pick top candidates from windows per the spec §7 ranking table.
+
+    1. available_count desc
+    2. >=2h spread vs already-chosen
+    3. earlier date
+
+    Used by both /calculate and /recommend deterministic fallback.
+    """
+    if not windows:
+        return []
+
+    # If any window has the maximum available_count and is a full match,
+    # we still allow lower-count windows when no full match exists.
+    best_available = max(w.available_count for w in windows)
+    candidates_pool = [w for w in windows if w.available_count == best_available]
+
+    # Phase 1: pick spread.
+    chosen: List[CandidateWindow] = []
+    for w in candidates_pool:
+        if not chosen:
+            chosen.append(w)
+            continue
+        if all(_minutes_between(w, prior) >= SPREAD_MIN_MINUTES for prior in chosen):
+            chosen.append(w)
+        if len(chosen) >= max_candidates:
+            break
+
+    # Phase 2: top-up with next-best from same available_count.
+    if len(chosen) < max_candidates:
+        for w in candidates_pool:
+            if w not in chosen:
+                chosen.append(w)
+                if len(chosen) >= max_candidates:
+                    break
+
+    # Phase 3: if still short, allow lower available_count windows (fallback).
+    if len(chosen) < max_candidates:
+        for w in windows:
+            if w not in chosen:
+                chosen.append(w)
+                if len(chosen) >= max_candidates:
+                    break
+
+    return [_window_to_candidate(w) for w in chosen]
+
+
+def validate_and_enrich(
+    llm_candidates: Sequence[dict],
+    windows: Sequence[CandidateWindow],
+    meeting: Meeting,
+) -> List[Candidate]:
+    """Re-validate LLM-supplied candidates against deterministic windows.
+
+    For each entry the LLM produced:
+    - start / end must match a window in `windows` (exact KST datetime)
+    - reason / share_message_draft are kept as-is
+    - available_count / available_nicknames / missing_participants come from
+      the matched window (NEVER from the LLM)
+
+    Raises:
+        CandidateValidationError if any candidate cannot be matched, if
+        required fields are missing, or if the list is empty.
+    """
+    if not llm_candidates:
+        raise CandidateValidationError("LLM returned 0 candidates")
+
+    by_key = {(_strip_tz(_to_dt(w.start)), _strip_tz(_to_dt(w.end))): w for w in windows}
+
+    out: List[Candidate] = []
+    for entry in llm_candidates:
+        if not isinstance(entry, dict):
+            raise CandidateValidationError(f"candidate is not an object: {entry!r}")
+        try:
+            start_dt = _strip_tz(_to_dt(entry["start"]))
+            end_dt = _strip_tz(_to_dt(entry["end"]))
+        except KeyError as exc:
+            raise CandidateValidationError(
+                f"candidate missing field: {exc.args[0]}"
+            ) from exc
+        except (TypeError, ValueError) as exc:
+            raise CandidateValidationError(
+                f"candidate has invalid datetime: {exc}"
+            ) from exc
+
+        window = by_key.get((start_dt, end_dt))
+        if window is None:
+            raise CandidateValidationError(
+                f"candidate {start_dt}-{end_dt} not in candidate_windows"
+            )
+
+        reason = entry.get("reason") or ""
+        share = entry.get("share_message_draft") or ""
+        if not isinstance(reason, str) or not reason.strip():
+            raise CandidateValidationError("candidate.reason missing or blank")
+        if not isinstance(share, str) or not share.strip():
+            raise CandidateValidationError("candidate.share_message_draft missing or blank")
+
+        out.append(
+            Candidate(
+                start=window.start,
+                end=window.end,
+                available_count=window.available_count,
+                missing_participants=list(window.missing_participants),
+                reason=reason.strip(),
+                share_message_draft=share.strip(),
+                note=None,
+            )
+        )
+
+    return out
+
+
+# ============================================================================
+# Legacy /calculate API (kept for backward-compat tests)
+# ============================================================================
+
+
 def calculate_candidates(
     meeting: Meeting,
     busy_blocks_by_participant: Dict[int, List[BusyBlock]],
     max_candidates: int = 3,
     participants: Optional[Sequence[Participant]] = None,
 ) -> Tuple[List[Candidate], Optional[str]]:
-    """Compute up to max_candidates candidate slots.
+    """Compute up to max_candidates candidate slots (legacy entry).
 
-    Args:
-        meeting: meeting metadata.
-        busy_blocks_by_participant: map participant_id -> list of busy blocks.
-            Participants missing from the dict are treated as fully available.
-        max_candidates: cap on the returned candidate list.
-        participants: optional ordered Participant list. If provided, used to
-            attach nicknames to missing_participants. If absent, missing
-            participants are surfaced by id (str(id)).
-
-    Returns:
-        (candidates, suggestion). When candidates is non-empty, suggestion is None.
+    Backward-compat wrapper used by the existing /calculate route + unit
+    tests. Internally re-uses generate_candidate_windows so the v3 buffer
+    rules (any == offline) flow through.
     """
     nickname_map = _nickname_map(participants, busy_blocks_by_participant)
     participant_ids = list(nickname_map.keys())
 
-    candidate_slots = _enumerate_slots(meeting)
-    if not candidate_slots:
+    slots = _enumerate_slots_v3(meeting)
+    if not slots:
         return [], _build_suggestion(meeting, reason="no_valid_slots")
 
-    # Phase 1: full participant set must be available.
-    full_candidates = _rank_candidates(
-        candidate_slots,
-        busy_blocks_by_participant,
-        meeting,
-        required_count=len(participant_ids),
-        participant_ids=participant_ids,
-        nickname_map=nickname_map,
-        max_candidates=max_candidates,
-    )
-    if full_candidates:
-        return full_candidates, None
+    full_target = len(participant_ids)
+    full_windows: List[CandidateWindow] = []
+    fallback_windows: List[CandidateWindow] = []
 
-    # Phase 2: fallback — accept slots where exactly 1 participant is missing.
-    fallback_required = max(1, len(participant_ids) - 1)
-    fallback_candidates = _rank_candidates(
-        candidate_slots,
-        busy_blocks_by_participant,
-        meeting,
-        required_count=fallback_required,
-        participant_ids=participant_ids,
-        nickname_map=nickname_map,
-        max_candidates=max_candidates,
-        annotate_missing=True,
-    )
-    if fallback_candidates:
-        return fallback_candidates, None
+    for slot in slots:
+        available, missing = _check_slot(
+            slot=slot,
+            busy_blocks_by_participant=busy_blocks_by_participant,
+            buffer_minutes=_effective_buffer_minutes(meeting),
+            participant_ids=participant_ids,
+        )
+        avail_count = len(available)
+        if avail_count == full_target and full_target > 0:
+            full_windows.append(
+                CandidateWindow(
+                    start=slot.start,
+                    end=slot.end,
+                    available_count=avail_count,
+                    is_full_match=True,
+                    available_nicknames=sorted(nickname_map[pid] for pid in available),
+                    missing_participants=[],
+                )
+            )
+        elif full_target > 1 and avail_count == full_target - 1:
+            fallback_windows.append(
+                CandidateWindow(
+                    start=slot.start,
+                    end=slot.end,
+                    available_count=avail_count,
+                    is_full_match=False,
+                    available_nicknames=sorted(nickname_map[pid] for pid in available),
+                    missing_participants=sorted(nickname_map[pid] for pid in missing),
+                )
+            )
+
+    if full_windows:
+        full_windows.sort(key=lambda w: (-w.available_count, w.start))
+        chosen = _spread_pick(full_windows, max_candidates)
+        return [_window_to_candidate_with_reason(w, meeting) for w in chosen], None
+
+    if fallback_windows:
+        fallback_windows.sort(key=lambda w: (-w.available_count, w.start))
+        chosen = _spread_pick(fallback_windows, max_candidates)
+        return [
+            _window_to_candidate_with_reason(w, meeting, annotate_missing=True)
+            for w in chosen
+        ], None
 
     return [], _build_suggestion(meeting, reason="no_intersection")
 
 
-# ----------------------------------------------------------------------------- helpers
+# ============================================================================
+# Helpers
+# ============================================================================
+
+
+def _effective_buffer_minutes(meeting: Meeting) -> int:
+    """v3: offline AND any apply buffer; online == 0 (Q8)."""
+    if meeting.location_type == "online":
+        return 0
+    # offline / any
+    return int(getattr(meeting, "offline_buffer_minutes", None) or BUFFER_MINUTES)
 
 
 def _nickname_map(
@@ -102,28 +371,22 @@ def _nickname_map(
     return {pid: str(pid) for pid in busy_blocks_by_participant.keys()}
 
 
-def _enumerate_slots(meeting: Meeting) -> List[Slot]:
-    """Generate every candidate slot of length duration_minutes that fits inside
-    [time_window_start, time_window_end] for each in-range weekday-respecting day."""
+def _enumerate_slots_v3(meeting: Meeting) -> List[Slot]:
     duration = timedelta(minutes=meeting.duration_minutes)
     step = timedelta(minutes=SLOT_MINUTES)
 
     slots: List[Slot] = []
-    current_day: date = meeting.date_range_start
-    while current_day <= meeting.date_range_end:
-        if meeting.include_weekends or current_day.weekday() < 5:
-            window_start = datetime.combine(current_day, _floor_time(meeting.time_window_start))
-            window_end = datetime.combine(current_day, meeting.time_window_end)
-            slot_start = window_start
-            while slot_start + duration <= window_end:
-                slots.append(Slot(start=slot_start, end=slot_start + duration))
-                slot_start += step
-        current_day += timedelta(days=1)
+    for current_day in enumerate_search_dates(meeting):
+        window_start = datetime.combine(current_day, _floor_time(meeting.time_window_start))
+        window_end = datetime.combine(current_day, meeting.time_window_end)
+        slot_start = window_start
+        while slot_start + duration <= window_end:
+            slots.append(Slot(start=slot_start, end=slot_start + duration))
+            slot_start += step
     return slots
 
 
 def _floor_time(t: time) -> time:
-    """Floor a time to a 30-min boundary."""
     minute = (t.minute // SLOT_MINUTES) * SLOT_MINUTES
     return time(t.hour, minute)
 
@@ -133,7 +396,6 @@ def _is_participant_free(
     range_start: datetime,
     range_end: datetime,
 ) -> bool:
-    """Return True iff none of the participant's busy blocks overlap [start, end)."""
     for block in busy_blocks:
         if block.start_at < range_end and block.end_at > range_start:
             return False
@@ -141,19 +403,15 @@ def _is_participant_free(
 
 
 def _check_slot(
+    *,
     slot: Slot,
     busy_blocks_by_participant: Dict[int, List[BusyBlock]],
-    meeting: Meeting,
+    buffer_minutes: int,
     participant_ids: Sequence[int],
 ) -> Tuple[Set[int], Set[int]]:
-    """Return (available_ids, missing_ids) for the slot.
-
-    Applies the offline buffer (extends both sides by 30 min) when meeting.location_type
-    is 'offline'. 'online' and 'any' do not get a buffer.
-    """
-    if meeting.location_type == "offline":
-        check_start = slot.start - timedelta(minutes=BUFFER_MINUTES)
-        check_end = slot.end + timedelta(minutes=BUFFER_MINUTES)
+    if buffer_minutes:
+        check_start = slot.start - timedelta(minutes=buffer_minutes)
+        check_end = slot.end + timedelta(minutes=buffer_minutes)
     else:
         check_start = slot.start
         check_end = slot.end
@@ -169,94 +427,72 @@ def _check_slot(
     return available, missing
 
 
-def _rank_candidates(
-    slots: Sequence[Slot],
-    busy_blocks_by_participant: Dict[int, List[BusyBlock]],
-    meeting: Meeting,
-    required_count: int,
-    participant_ids: Sequence[int],
-    nickname_map: Dict[int, str],
+def _spread_pick(
+    sorted_windows: Sequence[CandidateWindow],
     max_candidates: int,
-    annotate_missing: bool = False,
-) -> List[Candidate]:
-    """Greedy selection respecting the spec ranking rules."""
-    qualifying: List[Tuple[Slot, Set[int], Set[int]]] = []
-    for slot in slots:
-        available, missing = _check_slot(slot, busy_blocks_by_participant, meeting, participant_ids)
-        if len(available) >= required_count:
-            qualifying.append((slot, available, missing))
-
-    if not qualifying:
-        return []
-
-    # Sort by primary criteria: available_count desc, then earlier start.
-    qualifying.sort(key=lambda item: (-len(item[1]), item[0].start))
-
-    chosen: List[Tuple[Slot, Set[int], Set[int]]] = []
-    for entry in qualifying:
+) -> List[CandidateWindow]:
+    chosen: List[CandidateWindow] = []
+    for w in sorted_windows:
         if not chosen:
-            chosen.append(entry)
+            chosen.append(w)
             continue
-        # Prefer entries that are >= 2h apart from every prior chosen slot.
-        if all(_minutes_apart(entry[0], prior[0]) >= SPREAD_MIN_MINUTES for prior in chosen):
-            chosen.append(entry)
+        if all(_minutes_between(w, prior) >= SPREAD_MIN_MINUTES for prior in chosen):
+            chosen.append(w)
         if len(chosen) >= max_candidates:
             break
-
-    # If fewer than max_candidates passed the spread filter, top up with the
-    # next-highest-ranked entries even if they violate the spread rule.
     if len(chosen) < max_candidates:
-        for entry in qualifying:
-            if entry in chosen:
-                continue
-            chosen.append(entry)
-            if len(chosen) >= max_candidates:
-                break
-
-    return [
-        _to_candidate(slot, available, missing, nickname_map, annotate_missing)
-        for slot, available, missing in chosen
-    ]
+        for w in sorted_windows:
+            if w not in chosen:
+                chosen.append(w)
+                if len(chosen) >= max_candidates:
+                    break
+    return chosen
 
 
-def _minutes_apart(a: Slot, b: Slot) -> int:
+def _minutes_between(a: CandidateWindow, b: CandidateWindow) -> int:
     delta = abs((a.start - b.start).total_seconds()) / 60.0
     return int(delta)
 
 
-def _to_candidate(
-    slot: Slot,
-    available: Set[int],
-    missing: Set[int],
-    nickname_map: Dict[int, str],
-    annotate_missing: bool,
-) -> Candidate:
-    missing_nicks = sorted(nickname_map[pid] for pid in missing if pid in nickname_map)
-    note: Optional[str] = None
-    if annotate_missing and missing_nicks:
-        if len(missing_nicks) == 1:
-            note = f"{missing_nicks[0]}님 제외 가능"
-        else:
-            note = f"{', '.join(missing_nicks)}님 제외 가능"
-    weekday = ["월", "화", "수", "목", "금", "토", "일"][slot.start.weekday()]
-    reason = (
-        f"참여자 {len(available)}명 가능, {weekday}요일 {slot.start.strftime('%H:%M')}"
-    )
+def _window_to_candidate(w: CandidateWindow) -> Candidate:
     return Candidate(
-        start=slot.start,
-        end=slot.end,
-        available_count=len(available),
-        missing_participants=missing_nicks if annotate_missing else [],
+        start=w.start,
+        end=w.end,
+        available_count=w.available_count,
+        missing_participants=list(w.missing_participants),
+        reason=None,
+        share_message_draft=None,
+        note=None,
+    )
+
+
+def _window_to_candidate_with_reason(
+    w: CandidateWindow,
+    meeting: Meeting,
+    annotate_missing: bool = False,
+) -> Candidate:
+    weekday = ["월", "화", "수", "목", "금", "토", "일"][w.start.weekday()]
+    reason = (
+        f"참여자 {w.available_count}명 가능, {weekday}요일 {w.start.strftime('%H:%M')}"
+    )
+    note: Optional[str] = None
+    if annotate_missing and w.missing_participants:
+        if len(w.missing_participants) == 1:
+            note = f"{w.missing_participants[0]}님 제외 가능"
+        else:
+            note = f"{', '.join(w.missing_participants)}님 제외 가능"
+    return Candidate(
+        start=w.start,
+        end=w.end,
+        available_count=w.available_count,
+        missing_participants=list(w.missing_participants) if annotate_missing else [],
         reason=reason,
+        share_message_draft=None,
         note=note,
     )
 
 
 def _build_suggestion(meeting: Meeting, reason: str) -> str:
-    """Deterministic fallback suggestion text. Used when LLM is unavailable.
-
-    Privacy: only meeting title and structured metadata are referenced.
-    """
     if reason == "no_valid_slots":
         return (
             "선택한 날짜 범위와 시간대에 가능한 슬롯이 없습니다. "
@@ -268,7 +504,26 @@ def _build_suggestion(meeting: Meeting, reason: str) -> str:
     )
 
 
-# ----------------------------------------------------------------------------- timetable
+def _to_dt(value) -> datetime:
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    raise TypeError(f"cannot coerce to datetime: {value!r}")
+
+
+def _strip_tz(dt: datetime) -> datetime:
+    """Convert any tz-aware datetime to naive KST. Naive input passes through."""
+    if dt.tzinfo is None:
+        return dt
+    from app.services.timezones import to_kst_naive
+
+    return to_kst_naive(dt)
+
+
+# ============================================================================
+# Timetable
+# ============================================================================
 
 
 def build_timetable(
@@ -278,7 +533,7 @@ def build_timetable(
 ) -> List[dict]:
     """Build 30-min timetable slots within the meeting window.
 
-    Each slot is a dict {start, end, available_count, available_nicknames}.
+    Each slot dict: {start, end, available_count, available_nicknames}.
     Privacy: only nicknames are exposed (S10).
     """
     step = timedelta(minutes=SLOT_MINUTES)
@@ -286,27 +541,24 @@ def build_timetable(
     participant_ids = [p.id for p in participants]
 
     out: List[dict] = []
-    current_day: date = meeting.date_range_start
-    while current_day <= meeting.date_range_end:
-        if meeting.include_weekends or current_day.weekday() < 5:
-            window_start = datetime.combine(current_day, _floor_time(meeting.time_window_start))
-            window_end = datetime.combine(current_day, meeting.time_window_end)
-            slot_start = window_start
-            while slot_start + step <= window_end:
-                slot_end = slot_start + step
-                available_nicks: List[str] = []
-                for pid in participant_ids:
-                    blocks = busy_blocks_by_participant.get(pid, [])
-                    if _is_participant_free(blocks, slot_start, slot_end):
-                        available_nicks.append(nickname_map[pid])
-                out.append(
-                    {
-                        "start": slot_start,
-                        "end": slot_end,
-                        "available_count": len(available_nicks),
-                        "available_nicknames": available_nicks,
-                    }
-                )
-                slot_start += step
-        current_day += timedelta(days=1)
+    for current_day in enumerate_search_dates(meeting):
+        window_start = datetime.combine(current_day, _floor_time(meeting.time_window_start))
+        window_end = datetime.combine(current_day, meeting.time_window_end)
+        slot_start = window_start
+        while slot_start + step <= window_end:
+            slot_end = slot_start + step
+            available_nicks: List[str] = []
+            for pid in participant_ids:
+                blocks = busy_blocks_by_participant.get(pid, [])
+                if _is_participant_free(blocks, slot_start, slot_end):
+                    available_nicks.append(nickname_map[pid])
+            out.append(
+                {
+                    "start": slot_start,
+                    "end": slot_end,
+                    "available_count": len(available_nicks),
+                    "available_nicknames": available_nicks,
+                }
+            )
+            slot_start += step
     return out

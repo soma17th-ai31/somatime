@@ -41,3 +41,19 @@ Thumbs.db
 coverage/
 .coverage
 htmlcov/
+
+# 기획서 (개인 워크스페이스, 공유 안 함)
+기획서/
+
+# pip install -e 산출물
+backend/somameet_backend.egg-info/
+
+# Docker compose 의 SQLite 영속 디렉토리
+backend/data/
+
+# Playwright 자동 캡처 산출물
+frontend/test-results/
+frontend/playwright-report/
+
+# Claude Code 세션 상태
+.claude/

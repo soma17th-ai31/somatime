@@ -1,0 +1,44 @@
+# SomaMeet — local Docker compose for the backend (v3.20).
+# Frontend is intentionally NOT containerised here; for dev use `pnpm dev`
+# pointing at http://localhost:8000, and for prod the static bundle goes to
+# Vercel. This compose only handles the API + its persistent SQLite volume.
+#
+# Usage:
+#   1. Copy backend/.env.example to backend/.env and fill UPSTAGE_API_KEY etc.
+#   2. docker compose up --build
+#   3. API at http://localhost:8000 ; healthcheck at /api/health
+#   4. SQLite DB persists in ./backend/data/ (gitignored).
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: somameet-backend:dev
+    container_name: somameet-backend
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override DATABASE_URL so the SQLite file lives in the bind-mounted
+      # ./backend/data directory and survives `docker compose down`.
+      DATABASE_URL: sqlite:////app/data/somameet.db
+      # APP_BASE_URL has to point at the frontend the user will visit.
+      # Override here only if the local frontend lives somewhere other than
+      # http://localhost:5173.
+    volumes:
+      - ./backend/data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import urllib.request, sys
+          sys.exit(0 if urllib.request.urlopen("http://127.0.0.1:8000/api/health", timeout=3).status == 200 else 1)
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

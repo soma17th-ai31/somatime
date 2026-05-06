@@ -1,19 +1,27 @@
-"""Abstract base for LLM adapters.
+"""Abstract base for LLM adapters (v3 — Q9 single-call recommend()).
 
-Privacy contract for ALL adapters: the only inputs that may be passed to the
-LLM are slot times, participant counts, and meeting metadata (title is OK
-since it's the organizer's own input). NEVER pass busy_block titles,
-descriptions, locations, or attendee identities.
+Privacy contract:
+- ONLY meeting metadata + deterministic candidate_windows go into the LLM.
+- NEVER include busy_block titles / descriptions / locations.
+- NEVER include attendee identities beyond nicknames.
+
+The single recommend() method per adapter returns
+    {"summary": str, "candidates": [{start, end, reason, share_message_draft}]}
+- reason and share_message_draft are written by the LLM in the same call.
+- /calculate does NOT call the LLM (deterministic only).
+- /confirm does NOT call the LLM (frontend supplies share_message_draft).
 """
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List
+from typing import List, Sequence, TYPE_CHECKING
 
 from app.db.models import Meeting
-from app.schemas.candidate import Candidate
+
+if TYPE_CHECKING:
+    from app.services.scheduler import CandidateWindow
 
 
 @dataclass(frozen=True)
@@ -24,55 +32,84 @@ class Slot:
 
 class LLMAdapter(ABC):
     @abstractmethod
-    def generate_recommendation_reasons(
+    def recommend(
         self,
-        candidates: List[Candidate],
+        candidate_windows: "Sequence[CandidateWindow]",
         meeting: Meeting,
-    ) -> List[str]:
-        """Return one reason string per candidate, in the same order."""
+        max_candidates: int = 3,
+    ) -> dict:
+        """One-call recommendation.
 
-    @abstractmethod
-    def generate_share_message(
-        self,
-        meeting: Meeting,
-        confirmed_slot: Slot,
-        nicknames: List[str],
-    ) -> str:
-        """Return a shareable announcement draft."""
+        Returns:
+            {
+              "summary": str,
+              "candidates": [
+                {
+                  "start": ISO datetime str,
+                  "end": ISO datetime str,
+                  "reason": str,
+                  "share_message_draft": str
+                }, ...
+              ]
+            }
+        """
 
     # ------------------------------------------------------------------ shared
 
     def build_recommendation_payload(
-        self, candidates: List[Candidate], meeting: Meeting
+        self,
+        candidate_windows: "Sequence[CandidateWindow]",
+        meeting: Meeting,
+        max_candidates: int = 3,
     ) -> dict:
-        """Build a privacy-safe dict for prompt construction.
+        """Privacy-safe payload. ONLY the fields below may be sent.
 
-        ONLY the fields below may ever be sent to a provider:
-        title (organizer-supplied), location_type, duration_minutes, and
-        per-candidate (start_iso, end_iso, available_count, missing).
+        Asserted by the upstage privacy spy + acceptance test S11.
         """
         return {
-            "title": meeting.title,
-            "location_type": meeting.location_type,
-            "duration_minutes": meeting.duration_minutes,
-            "candidates": [
+            "meeting": {
+                "title": meeting.title,
+                "location_type": meeting.location_type,
+                "duration_minutes": meeting.duration_minutes,
+                "offline_buffer_minutes": int(
+                    getattr(meeting, "offline_buffer_minutes", 30) or 30
+                ),
+            },
+            "rules": {
+                "slot_unit_minutes": 30,
+                "max_candidates": max_candidates,
+            },
+            "candidate_windows": [
                 {
-                    "start_iso": c.start.isoformat(),
-                    "end_iso": c.end.isoformat(),
-                    "available_count": c.available_count,
-                    "missing": list(c.missing_participants),
+                    "start": w.start.isoformat(),
+                    "end": w.end.isoformat(),
+                    "available_count": w.available_count,
+                    "is_full_match": w.is_full_match,
+                    "available_participants": list(w.available_nicknames),
+                    "unavailable_participants": list(w.missing_participants),
                 }
-                for c in candidates
+                for w in candidate_windows
             ],
         }
 
-    def build_share_payload(
-        self, meeting: Meeting, slot: Slot, nicknames: List[str]
-    ) -> dict:
-        return {
-            "title": meeting.title,
-            "location_type": meeting.location_type,
-            "start_iso": slot.start.isoformat(),
-            "end_iso": slot.end.isoformat(),
-            "nicknames": list(nicknames),
-        }
+
+def render_template_share_message(meeting: Meeting, candidate) -> str:
+    """Deterministic share_message_draft used by /recommend's fallback path
+    (when all 4 LLM attempts fail) and by the TemplateAdapter.
+
+    Privacy: derives only from meeting.title and the candidate's slot times.
+    """
+    location_label = {
+        "online": "온라인",
+        "offline": "오프라인",
+        "any": "온라인/오프라인 상관없음",
+    }.get(meeting.location_type, meeting.location_type)
+    start = candidate.start
+    end = candidate.end
+    date_part = start.strftime("%Y-%m-%d")
+    time_range = f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}"
+    return (
+        f"'{meeting.title}' 일정 안내드립니다.\n"
+        f"일시: {date_part} {time_range}\n"
+        f"장소: {location_label}"
+    )

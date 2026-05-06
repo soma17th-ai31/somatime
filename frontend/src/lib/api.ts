@@ -1,15 +1,22 @@
+// Single source of truth for backend HTTP calls. v3 — 2026-05-06.
+// All requests use credentials: "include" so the somameet_pt_{slug} cookie travels.
+// All errors are normalized to ApiError(status, errorCode, message, suggestion?).
+
 import {
   ApiError,
   type AvailabilitySubmitResponse,
   type CalculateResponse,
   type ConfirmRequest,
   type ConfirmResponse,
-  type GoogleOAuthUrlResponse,
   type ManualAvailabilityRequest,
   type MeetingCreateRequest,
   type MeetingCreateResponse,
   type MeetingDetail,
-  type ParticipantJoinResponse,
+  type MeetingSettingsUpdate,
+  type ParticipantJoinRequest,
+  type ParticipantLoginRequest,
+  type ParticipantResponse,
+  type RecommendResponse,
   type TimetableResponse,
 } from "./types"
 
@@ -65,7 +72,8 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   if (!response.ok) {
     const obj = (parsed ?? {}) as Record<string, unknown>
     const errorCode = typeof obj.error_code === "string" ? obj.error_code : "unknown_error"
-    const message = typeof obj.message === "string" ? obj.message : `요청이 실패했습니다 (${response.status})`
+    const message =
+      typeof obj.message === "string" ? obj.message : `요청이 실패했습니다 (${response.status})`
     const suggestion = typeof obj.suggestion === "string" ? obj.suggestion : undefined
     throw new ApiError(response.status, errorCode, message, suggestion)
   }
@@ -73,7 +81,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   return parsed as T
 }
 
-// Endpoints
+// Endpoints — payload shapes track spec §5.1 verbatim.
 export const api = {
   createMeeting(payload: MeetingCreateRequest) {
     return request<MeetingCreateResponse>("/api/meetings", { method: "POST", body: payload })
@@ -83,11 +91,50 @@ export const api = {
     return request<MeetingDetail>(`/api/meetings/${encodeURIComponent(slug)}`)
   },
 
-  joinParticipant(slug: string, nickname: string) {
-    return request<ParticipantJoinResponse>(`/api/meetings/${encodeURIComponent(slug)}/participants`, {
-      method: "POST",
-      body: { nickname },
-    })
+  // v3.19 — replace meeting settings (날짜/길이/방식/시간대 등). Title not editable.
+  updateMeetingSettings(slug: string, payload: MeetingSettingsUpdate) {
+    return request<MeetingDetail>(
+      `/api/meetings/${encodeURIComponent(slug)}/settings`,
+      { method: "PATCH", body: payload },
+    )
+  },
+
+  joinMeeting(slug: string, payload: ParticipantJoinRequest) {
+    return request<ParticipantResponse>(
+      `/api/meetings/${encodeURIComponent(slug)}/participants`,
+      { method: "POST", body: payload },
+    )
+  },
+
+  // Spec §5.1: PIN re-entry. Re-issues somameet_pt_{slug} cookie on success.
+  loginParticipant(slug: string, payload: ParticipantLoginRequest) {
+    return request<ParticipantResponse>(
+      `/api/meetings/${encodeURIComponent(slug)}/participants/login`,
+      { method: "POST", body: payload },
+    )
+  },
+
+  // v3.5 / v3.11 — update current participant. Cookie-authed.
+  // pin field semantics:
+  //   - omit pin       → leave existing PIN unchanged
+  //   - pin: ""        → clear existing PIN
+  //   - pin: "1234"    → set new 4-digit PIN
+  // is_required field semantics:
+  //   - omit field             → leave existing flag unchanged
+  //   - is_required: true/false → set accordingly
+  updateSelf(
+    slug: string,
+    payload: { nickname: string; pin?: string; is_required?: boolean },
+  ) {
+    return request<{
+      id: number
+      nickname: string
+      has_pin: boolean
+      is_required: boolean
+    }>(
+      `/api/meetings/${encodeURIComponent(slug)}/participants/me`,
+      { method: "PATCH", body: payload },
+    )
   },
 
   submitManual(slug: string, payload: ManualAvailabilityRequest) {
@@ -106,27 +153,33 @@ export const api = {
     )
   },
 
-  getGoogleOauthUrl(slug: string) {
-    return request<GoogleOAuthUrlResponse>(
-      `/api/meetings/${encodeURIComponent(slug)}/availability/google/oauth-url`,
-    )
-  },
-
   getTimetable(slug: string) {
     return request<TimetableResponse>(`/api/meetings/${encodeURIComponent(slug)}/timetable`)
   },
 
+  // Deterministic only. No LLM call. reason/share_message_draft are null.
   calculate(slug: string) {
     return request<CalculateResponse>(`/api/meetings/${encodeURIComponent(slug)}/calculate`, {
       method: "POST",
     })
   },
 
-  confirm(slug: string, organizerToken: string, payload: ConfirmRequest) {
+  // LLM-driven. 1 call (up to 3 retries on validation fail). Returns reason + share_message_draft.
+  recommend(slug: string) {
+    return request<RecommendResponse>(`/api/meetings/${encodeURIComponent(slug)}/recommend`, {
+      method: "POST",
+    })
+  },
+
+  // Spec §5.1: confirm now persists share_message_draft as-is.
+  // v3.2 (Path B): no X-Organizer-Token header — share-URL holders may confirm.
+  confirm(slug: string, payload: ConfirmRequest) {
     return request<ConfirmResponse>(`/api/meetings/${encodeURIComponent(slug)}/confirm`, {
       method: "POST",
       body: payload,
-      headers: { "X-Organizer-Token": organizerToken },
     })
   },
 }
+
+// Re-export for convenience.
+export { ApiError }

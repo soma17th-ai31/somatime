@@ -51,7 +51,7 @@ export function IcsUploadForm({ slug, onSubmitted }: Props) {
 
   return (
     <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-muted-foreground">
         Google Calendar 또는 Outlook에서 내보낸 .ics 파일을 업로드하세요. 일정 제목/설명/위치는
         서버에 저장하지 않습니다.
       </p>
@@ -59,7 +59,7 @@ export function IcsUploadForm({ slug, onSubmitted }: Props) {
         ref={inputRef}
         type="file"
         accept=".ics,text/calendar"
-        className="block w-full text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-accent file:px-4 file:py-2 file:text-sm file:font-medium file:text-accent-foreground hover:file:bg-blue-700"
+        className="block w-full text-sm text-foreground file:mr-3 file:rounded-md file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:bg-primary/85"
       />
       <div>
         <Button type="submit" disabled={submitting}>
@@ -68,13 +68,13 @@ export function IcsUploadForm({ slug, onSubmitted }: Props) {
       </div>
 
       {uploadedCount !== null ? (
-        <p className="text-sm text-emerald-700">
+        <p className="text-sm text-success">
           {uploadedCount}개의 일정이 가용 정보에 반영되었습니다.
         </p>
       ) : null}
 
       {error ? (
-        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+        <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           <div className="font-medium">{error}</div>
           {errorCode ? <div className="mt-1 text-xs">코드: {errorCode}</div> : null}
           {suggestion ? <div className="mt-1 text-xs">{suggestion}</div> : null}

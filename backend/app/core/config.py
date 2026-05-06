@@ -5,14 +5,18 @@ Per the coordination contract:
 - get_settings() is cached with lru_cache so a single instance is shared.
 - Test runs override DATABASE_URL via env vars; we still read directly from
   os.environ for DATABASE_URL inside app.db.session, so settings here is for
-  values that don't change per-test (URLs, OAuth, LLM).
+  values that don't change per-test (URLs, LLM provider).
+
+v3 cleanup:
+- Google OAuth keys removed (Q3 — feature deleted, no env vars surface).
+- Multi-LLM legacy keys (Gemini / Anthropic / OpenAI) removed; the only
+  supported providers are `upstage` (real LLM) and `template` (deterministic).
 """
 from __future__ import annotations
 
 from functools import lru_cache
 from typing import List
 
-from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -39,16 +43,14 @@ class Settings(BaseSettings):
     COOKIE_SAMESITE: str = "lax"
     COOKIE_SECURE: bool = False
 
-    GOOGLE_CLIENT_ID: str = ""
-    GOOGLE_CLIENT_SECRET: str = ""
-    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/api/auth/google/callback"
-    GOOGLE_OAUTH_SCOPES: str = "https://www.googleapis.com/auth/calendar.freebusy"
-
+    # LLM_PROVIDER defaults to `template` so a fresh clone runs end-to-end
+    # without needing an UPSTAGE_API_KEY. README documents how to switch to
+    # upstage for real recommendations.
     LLM_PROVIDER: str = "template"
-    LLM_MODEL: str = "gemini-2.5-flash"
-    GEMINI_API_KEY: str = ""
-    ANTHROPIC_API_KEY: str = ""
-    OPENAI_API_KEY: str = ""
+    UPSTAGE_API_KEY: str = ""
+    UPSTAGE_BASE_URL: str = "https://api.upstage.ai/v1"
+    UPSTAGE_MODEL: str = "solar-pro3"
+    UPSTAGE_TIMEOUT_SECONDS: int = 45
 
     @property
     def cors_allowed_origins(self) -> List[str]:
@@ -57,19 +59,6 @@ class Settings(BaseSettings):
         if extra:
             origins.update(o.strip() for o in extra.split(",") if o.strip())
         return sorted(origins)
-
-    @property
-    def google_oauth_scope_list(self) -> List[str]:
-        scopes = self.GOOGLE_OAUTH_SCOPES.strip()
-        if not scopes:
-            return []
-        if " " in scopes:
-            return [s for s in scopes.split() if s]
-        return [scopes]
-
-    @property
-    def google_oauth_configured(self) -> bool:
-        return bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET)
 
 
 @lru_cache(maxsize=1)

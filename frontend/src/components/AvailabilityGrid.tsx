@@ -1,7 +1,6 @@
-// When2Meet-style drag-paint availability grid (chip variant).
-// Default = unselected (white pill). Drag to mark cells available (emerald pill).
-// Selectors and aria-pressed are unchanged from the prior border-grid version
-// so existing Playwright tests keep working — only the visuals are softened.
+// When2Meet-style drag-paint availability grid (calendar/vertical variant).
+// v3.4: rows = 30-min times, columns = dates (구글 캘린더 주간 뷰처럼).
+// Default = unselected (white). Drag to mark cells available (primary).
 
 import { useEffect, useRef } from "react"
 import type { MeetingDetail } from "@/lib/types"
@@ -27,9 +26,7 @@ export function AvailabilityGrid({ meeting, value, onChange }: AvailabilityGridP
   const times = getMeetingTimes(meeting)
 
   const paintModeRef = useRef<PaintMode>(null)
-  // Track cells already touched in the current drag so we don't re-toggle endlessly.
   const touchedRef = useRef<Set<string>>(new Set())
-  // Latest selection snapshot, kept fresh so mid-drag handlers see the in-progress Set.
   const liveSelectedRef = useRef<Set<string>>(value)
   liveSelectedRef.current = value
 
@@ -105,14 +102,14 @@ export function AvailabilityGrid({ meeting, value, onChange }: AvailabilityGridP
     if (key) applyPaint(key, paintModeRef.current)
   }
 
-  // grid-template-columns: a header (time) col + N date columns.
+  // Calendar-style: 64px time label column + N date columns.
   const gridStyle = {
-    gridTemplateColumns: `64px repeat(${dates.length}, minmax(56px, 1fr))`,
+    gridTemplateColumns: `64px repeat(${dates.length}, minmax(64px, 1fr))`,
   }
 
   if (dates.length === 0 || times.length === 0) {
     return (
-      <div className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
+      <div className="rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
         표시할 날짜 또는 시간 범위가 없습니다.
       </div>
     )
@@ -121,7 +118,7 @@ export function AvailabilityGrid({ meeting, value, onChange }: AvailabilityGridP
   return (
     <div
       data-testid="availability-grid"
-      className="overflow-x-auto rounded-xl bg-slate-50 p-2"
+      className="max-h-[520px] overflow-auto rounded-xl border border-border bg-card p-2"
       onTouchMove={handleTouchMove}
     >
       <div
@@ -130,41 +127,36 @@ export function AvailabilityGrid({ meeting, value, onChange }: AvailabilityGridP
         role="grid"
         aria-label="가용 시간 그리드"
       >
-        {/* Header row: empty corner + date labels */}
-        <div className="sticky left-0 z-10 bg-slate-50" />
+        {/* Header row: empty top-left corner + date labels (sticky top) */}
+        <div className="sticky left-0 top-0 z-20 bg-card" />
         {dates.map((date) => (
           <div
-            key={`h-${date}`}
-            className="px-2 py-2 text-center font-medium text-slate-700"
+            key={`th-${date}`}
+            className="sticky top-0 z-10 bg-card px-1 py-2 text-center text-[11px] font-semibold text-foreground"
           >
             {formatDateLabel(date)}
           </div>
         ))}
 
-        {/* Body rows */}
-        {times.map((time) => {
-          const onHour = isOnHour(time)
-          return (
-            <RowFragment
-              key={time}
-              time={time}
-              onHour={onHour}
-              dates={dates}
-              value={value}
-              onMouseDown={handleMouseDown}
-              onMouseEnter={handleMouseEnter}
-              onTouchStart={handleTouchStart}
-            />
-          )
-        })}
+        {/* Body rows: time label (sticky left) + cells per date */}
+        {times.map((time) => (
+          <TimeRow
+            key={time}
+            time={time}
+            dates={dates}
+            value={value}
+            onMouseDown={handleMouseDown}
+            onMouseEnter={handleMouseEnter}
+            onTouchStart={handleTouchStart}
+          />
+        ))}
       </div>
     </div>
   )
 }
 
-interface RowFragmentProps {
+interface TimeRowProps {
   time: string
-  onHour: boolean
   dates: string[]
   value: Set<string>
   onMouseDown: (e: React.MouseEvent<HTMLButtonElement>, key: string) => void
@@ -172,28 +164,18 @@ interface RowFragmentProps {
   onTouchStart: (e: React.TouchEvent<HTMLButtonElement>, key: string) => void
 }
 
-function RowFragment({
-  time,
-  onHour,
-  dates,
-  value,
-  onMouseDown,
-  onMouseEnter,
-  onTouchStart,
-}: RowFragmentProps) {
-  // Add a little vertical breathing room above each on-hour row so users can
-  // scan hour boundaries without us having to draw a heavy border.
-  const rowSpacingClass = onHour ? "mt-1" : ""
+function TimeRow({ time, dates, value, onMouseDown, onMouseEnter, onTouchStart }: TimeRowProps) {
   return (
     <>
       <div
         className={cn(
-          "sticky left-0 z-10 flex h-6 items-center justify-end bg-slate-50 pr-2 text-[11px]",
-          onHour ? "font-semibold text-slate-700" : "text-slate-400",
-          rowSpacingClass,
+          "sticky left-0 z-10 flex h-6 items-center justify-end bg-card pr-2 text-[11px] tabular-nums",
+          isOnHour(time)
+            ? "font-semibold text-foreground"
+            : "text-muted-foreground/60",
         )}
       >
-        {onHour ? time : ""}
+        {isOnHour(time) ? time : ""}
       </div>
       {dates.map((date) => {
         const key = makeCellKey(date, time)
@@ -210,11 +192,10 @@ function RowFragment({
             onMouseEnter={() => onMouseEnter(key)}
             onTouchStart={(e) => onTouchStart(e, key)}
             className={cn(
-              "h-6 cursor-pointer rounded-md transition-colors",
-              rowSpacingClass,
+              "h-6 cursor-pointer rounded-sm transition-colors",
               selected
-                ? "bg-emerald-500 shadow-sm ring-1 ring-emerald-600/30 hover:bg-emerald-600"
-                : "border border-slate-200 bg-white hover:bg-slate-100",
+                ? "bg-primary shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)] hover:bg-primary/85"
+                : "border border-border bg-background hover:bg-primary/15",
             )}
           />
         )

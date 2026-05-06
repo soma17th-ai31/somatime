@@ -1,4 +1,8 @@
-"""Unit tests for slug/token generation."""
+"""Unit tests for slug/token generation.
+
+v3.2 (Path B): organizer_token generation deleted; only slug + participant
+token utilities remain.
+"""
 from __future__ import annotations
 
 import string
@@ -7,7 +11,6 @@ import pytest
 
 from app.services.tokens import (
     BASE62_ALPHABET,
-    generate_organizer_token,
     generate_participant_token,
     generate_slug,
 )
@@ -36,22 +39,10 @@ def test_slug_zero_length_rejected() -> None:
         generate_slug(0)
 
 
-def test_organizer_token_at_least_32_chars() -> None:
-    for _ in range(50):
-        token = generate_organizer_token()
-        assert len(token) >= 32
-
-
 def test_participant_token_at_least_32_chars() -> None:
     for _ in range(50):
         token = generate_participant_token()
         assert len(token) >= 32
-
-
-def test_organizer_token_urlsafe_chars() -> None:
-    allowed = set(string.ascii_letters + string.digits + "-_")
-    for _ in range(50):
-        assert set(generate_organizer_token()).issubset(allowed)
 
 
 def test_participant_token_urlsafe_chars() -> None:
@@ -65,6 +56,8 @@ def test_participant_token_no_collisions_in_1k_iterations() -> None:
     assert len(seen) == 1000
 
 
-def test_organizer_token_rejects_too_few_bytes() -> None:
-    with pytest.raises(ValueError):
-        generate_organizer_token(num_bytes=8)
+def test_organizer_token_helper_no_longer_exported() -> None:
+    """Path B regression guard: ensure the symbol stays gone."""
+    import app.services.tokens as tokens_mod
+
+    assert not hasattr(tokens_mod, "generate_organizer_token")

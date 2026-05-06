@@ -55,6 +55,11 @@ function getDayOfWeek(dateIso: string): number {
 }
 
 export function getMeetingDates(meeting: MeetingDetail): string[] {
+  // Spec §5.1 / §7: date_mode == "picked" -> use candidate_dates verbatim, ignore include_weekends.
+  if (meeting.date_mode === "picked") {
+    return [...(meeting.candidate_dates ?? [])].sort()
+  }
+  if (!meeting.date_range_start || !meeting.date_range_end) return []
   const all = enumerateDates(meeting.date_range_start, meeting.date_range_end)
   if (meeting.include_weekends) return all
   return all.filter((d) => {
@@ -233,6 +238,43 @@ export function rangeToCellKeys(date: string, startMin: number, endMin: number):
     out.push(makeCellKey(date, minutesToHHMM(m)))
   }
   return out
+}
+
+// v3.6 — derive the "selected (= available)" cell set from a participant's
+// busy_blocks. selected = allCells - busyCells. Cells that fall partially outside
+// any busy_block remain selected. Used to pre-fill ManualAvailabilityForm.
+export function selectedFromBusyBlocks(
+  meeting: MeetingDetail,
+  blocks: { start: string; end: string }[],
+): Set<string> {
+  const all = enumerateAllCells(meeting)
+  if (blocks.length === 0) return new Set(all)
+  const busy = new Set<string>()
+  for (const b of blocks) {
+    // Backend returns KST ISO with "+09:00" or naive — both forms parse to a Date.
+    const start = new Date(b.start)
+    const end = new Date(b.end)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) continue
+    // Walk in 30-min steps and mark each KST date+time cell.
+    const cursor = new Date(start)
+    while (cursor.getTime() < end.getTime()) {
+      const kstDate = cursor.toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" })
+      // en-CA gives YYYY-MM-DD which is what we use as the cell-date key.
+      const kstTime = cursor.toLocaleTimeString("en-GB", {
+        timeZone: "Asia/Seoul",
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+      busy.add(makeCellKey(kstDate, kstTime))
+      cursor.setMinutes(cursor.getMinutes() + SLOT_MINUTES)
+    }
+  }
+  const selected = new Set<string>()
+  for (const k of all) {
+    if (!busy.has(k)) selected.add(k)
+  }
+  return selected
 }
 
 // Compact two-line label: e.g. "5/12" + "화"

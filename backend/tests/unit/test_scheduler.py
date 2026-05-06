@@ -29,16 +29,18 @@ def _make_meeting(
     end_date: date = date(2026, 5, 15),
     window_start: time = time(9, 0),
     window_end: time = time(22, 0),
-    participant_count: int = 3,
+    participant_count: int = 3,  # noqa: ARG001 — accepted for back-compat
 ) -> Meeting:
+    # v3.1: participant_count was removed from Meeting; the scheduler does
+    # not depend on it. Leave the kwarg in the helper signature so older
+    # call sites keep compiling.
+    del participant_count
     m = Meeting(
         slug="abc12345",
-        organizer_token="x" * 32,
         title="meeting",
         date_range_start=start_date,
         date_range_end=end_date,
         duration_minutes=duration,
-        participant_count=participant_count,
         location_type=location,
         time_window_start=window_start,
         time_window_end=window_end,
@@ -140,7 +142,8 @@ def test_online_includes_slot_that_offline_would_buffer_out() -> None:
     assert datetime(2026, 5, 12, 13, 30) in starts
 
 
-def test_any_location_does_not_apply_buffer() -> None:
+def test_any_location_applies_buffer_v3() -> None:
+    """v3 (Q8): location=any now applies the offline buffer (was 'no buffer' in v2)."""
     meeting = _make_meeting(
         duration=60,
         location="any",
@@ -157,7 +160,9 @@ def test_any_location_does_not_apply_buffer() -> None:
     }
     candidates, _ = calculate_candidates(meeting, busy, participants=parts, max_candidates=10)
     starts = {c.start for c in candidates}
-    assert datetime(2026, 5, 12, 13, 30) in starts
+    # v3: any-location with default 30-min buffer excludes 13:30-14:30 because
+    # the [13:00, 15:00] check window overlaps both adjacent busy blocks.
+    assert datetime(2026, 5, 12, 13, 30) not in starts
 
 
 def test_buffer_minutes_constant() -> None:

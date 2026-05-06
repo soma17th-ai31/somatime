@@ -4,10 +4,14 @@ import MeetingPage from "./pages/MeetingPage"
 
 function NotFoundPage() {
   return (
-    <div className="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center p-8 text-center">
-      <h1 className="text-2xl font-semibold text-slate-900">페이지를 찾을 수 없습니다</h1>
-      <p className="mt-2 text-slate-600">요청하신 주소가 올바른지 확인해 주세요.</p>
-      <Link to="/" className="mt-6 text-accent underline">
+    <div className="linear-container flex min-h-screen flex-col items-center justify-center gap-3 text-center">
+      <h1 className="font-display text-2xl font-semibold tracking-[-0.5px] text-foreground">
+        페이지를 찾을 수 없습니다
+      </h1>
+      <p className="text-sm text-muted-foreground">
+        요청하신 주소가 올바른지 확인해 주세요.
+      </p>
+      <Link to="/" className="text-primary underline-offset-2 hover:underline">
         회의 만들기로 돌아가기
       </Link>
     </div>

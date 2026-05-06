@@ -103,7 +103,6 @@ def make_meeting(client):
             "date_range_start": "2026-05-11",
             "date_range_end": "2026-05-15",
             "duration_minutes": 60,
-            "participant_count": 4,
             "location_type": "online",
             "time_window_start": "09:00",
             "time_window_end": "22:00",
@@ -153,12 +152,10 @@ def sample_meeting(db_session):
 
     meeting = Meeting(
         slug="aB3kF9xQ",
-        organizer_token="x" * 32,
         title="팀 회의",
         date_range_start=date(2026, 5, 11),
         date_range_end=date(2026, 5, 15),
         duration_minutes=60,
-        participant_count=4,
         location_type="online",
         time_window_start=time(9, 0),
         time_window_end=time(22, 0),

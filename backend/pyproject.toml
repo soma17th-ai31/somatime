@@ -21,16 +21,11 @@ dependencies = [
     "python-multipart>=0.0.7",
     "icalendar>=5.0",
     "httpx>=0.26",
-    "google-auth>=2.27",
-    "google-auth-oauthlib>=1.2",
-    "google-api-python-client>=2.116",
-    "google-generativeai>=0.4",
+    "openai>=1.57",
     "psycopg2-binary>=2.9",
 ]
 
 [project.optional-dependencies]
-anthropic = ["anthropic>=0.18"]
-openai = ["openai>=1.10"]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",

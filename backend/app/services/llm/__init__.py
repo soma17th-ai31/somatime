@@ -1,31 +1,25 @@
-"""LLM adapter factory.
+"""LLM adapter factory (v3).
 
-Provider is selected from environment LLM_PROVIDER. The factory imports the
-concrete adapter lazily so that missing optional SDKs (e.g. anthropic, openai)
-do not break the default 'gemini' or 'template' paths.
+Provider selection per LLM_PROVIDER env var. Only `upstage` and `template`
+are supported in v3; gemini/anthropic/openai branches were removed.
+
+If LLM_PROVIDER=upstage but UPSTAGE_API_KEY is missing, UpstageAdapter
+raises RuntimeError. Callers may catch that and fall back to template.
 """
 from __future__ import annotations
 
 import os
 from typing import Optional
 
-from app.services.llm.base import LLMAdapter
+from app.services.llm.base import LLMAdapter, render_template_share_message
 
 
 def get_llm_adapter(provider: Optional[str] = None) -> LLMAdapter:
-    name = (provider or os.environ.get("LLM_PROVIDER", "template")).strip().lower()
-    if name == "gemini":
-        from app.services.llm.gemini import GeminiAdapter
+    name = (provider or os.environ.get("LLM_PROVIDER", "upstage")).strip().lower()
+    if name == "upstage":
+        from app.services.llm.upstage import UpstageAdapter
 
-        return GeminiAdapter()
-    if name == "anthropic":
-        from app.services.llm.anthropic import AnthropicAdapter
-
-        return AnthropicAdapter()
-    if name == "openai":
-        from app.services.llm.openai import OpenAIAdapter
-
-        return OpenAIAdapter()
+        return UpstageAdapter()
     if name == "template":
         from app.services.llm.template import TemplateAdapter
 
@@ -33,4 +27,4 @@ def get_llm_adapter(provider: Optional[str] = None) -> LLMAdapter:
     raise ValueError(f"Unknown LLM_PROVIDER: {name!r}")
 
 
-__all__ = ["LLMAdapter", "get_llm_adapter"]
+__all__ = ["LLMAdapter", "get_llm_adapter", "render_template_share_message"]

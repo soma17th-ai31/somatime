@@ -1,9 +1,10 @@
-// Read-only heatmap of collective availability.
-// Visual style mirrors AvailabilityGrid (Mode B chip grid):
-//   - Rows = 30-min times, columns = dates.
-//   - Outer container rounded-xl bg-slate-50 p-2.
-//   - Cells rounded-md, no borders, gap-1, with mt-1 breathing room on hour rows.
-//   - Color encodes available_count / participantCount ratio along an emerald scale.
+// Read-only heatmap (calendar/vertical variant).
+// v3.4: rows = 30-min times, columns = dates (구글 캘린더 주간 뷰처럼).
+// v3.17: contiguous same-count cells render as a single grid item that spans
+//        N rows via `grid-row: ... / span N`. Empty (count=0) and missing cells
+//        are 1-row items. The CSS-Grid `gap-y-1` puts a 4 px gap between any
+//        two adjacent items but is consumed inside multi-row spans, so a merged
+//        run reads as one solid block with no internal gaps. No margin tricks.
 
 import { useMemo } from "react"
 import type { TimetableSlot } from "@/lib/types"
@@ -16,20 +17,97 @@ interface TimetableProps {
   participantCount: number
 }
 
-// Map ratio of available participants to a chip-style class set.
-function intensityClass(count: number, total: number): string {
-  if (count <= 0) return "bg-white border border-slate-200 text-slate-400"
+// Tailwind v3 + hex CSS-var primary doesn't compose `bg-primary/<alpha>` reliably,
+// so we drive the heatmap opacity via inline rgba (primary = #5e6ad2 = rgb(94,106,210)).
+function intensityStyle(count: number, total: number): React.CSSProperties {
+  if (count <= 0) return {}
   const ratio = total > 0 ? Math.min(count / total, 1) : 1
-  if (ratio >= 1) {
-    return "bg-emerald-600 text-white shadow-sm ring-1 ring-emerald-700/30"
-  }
-  if (ratio >= 0.67) return "bg-emerald-400 text-white"
-  if (ratio >= 0.34) return "bg-emerald-200 text-emerald-900"
-  return "bg-emerald-100 text-emerald-900"
+  let alpha: number
+  if (ratio >= 1) alpha = 1
+  else if (ratio >= 0.67) alpha = 0.85
+  else if (ratio >= 0.34) alpha = 0.7
+  else alpha = 0.55
+  return { backgroundColor: `rgba(94, 106, 210, ${alpha})` }
+}
+
+function intensityTextClass(count: number): string {
+  if (count <= 0) return "text-muted-foreground/60"
+  return "text-primary-foreground"
 }
 
 function makeKey(date: string, time: string): string {
   return `${date}|${time}`
+}
+
+interface Run {
+  startIdx: number
+  length: number
+  // count = -1 means "no slot data at all" (rendered as faint card-bg block).
+  // count = 0 means "everyone busy" (empty pill with border).
+  // count > 0 means N people available; merged across consecutive same counts.
+  count: number
+  startSlot: TimetableSlot | undefined
+  endSlot: TimetableSlot | undefined
+  // Union of nicknames across the run (same count usually → same set, but
+  // taking union defends against edge cases where the set differs).
+  nicknames: string[]
+}
+
+function computeRuns(
+  date: string,
+  times: string[],
+  slotByKey: Map<string, TimetableSlot>,
+): Run[] {
+  const out: Run[] = []
+  let i = 0
+  while (i < times.length) {
+    const slot = slotByKey.get(makeKey(date, times[i]))
+    if (!slot) {
+      out.push({
+        startIdx: i,
+        length: 1,
+        count: -1,
+        startSlot: undefined,
+        endSlot: undefined,
+        nicknames: [],
+      })
+      i++
+      continue
+    }
+    if (slot.available_count <= 0) {
+      out.push({
+        startIdx: i,
+        length: 1,
+        count: 0,
+        startSlot: slot,
+        endSlot: slot,
+        nicknames: [],
+      })
+      i++
+      continue
+    }
+    const runCount = slot.available_count
+    const nameSet = new Set<string>(slot.available_nicknames)
+    let j = i + 1
+    let endSlot: TimetableSlot = slot
+    while (j < times.length) {
+      const s = slotByKey.get(makeKey(date, times[j]))
+      if (!s || s.available_count !== runCount) break
+      for (const n of s.available_nicknames) nameSet.add(n)
+      endSlot = s
+      j++
+    }
+    out.push({
+      startIdx: i,
+      length: j - i,
+      count: runCount,
+      startSlot: slot,
+      endSlot,
+      nicknames: Array.from(nameSet).sort(),
+    })
+    i = j
+  }
+  return out
 }
 
 export function Timetable({ slots, participantCount }: TimetableProps) {
@@ -49,144 +127,139 @@ export function Timetable({ slots, participantCount }: TimetableProps) {
     return { dates: datesSorted, times: timesSorted, slotByKey: lookup }
   }, [slots])
 
+  const datesRuns = useMemo(
+    () => dates.map((date) => computeRuns(date, times, slotByKey)),
+    [dates, times, slotByKey],
+  )
+
   if (slots.length === 0 || dates.length === 0 || times.length === 0) {
     return (
-      <p className="text-sm text-slate-600">
+      <p className="text-sm text-muted-foreground">
         아직 입력된 가용 정보가 없습니다. 참여자가 일정을 제출하면 여기에 표시됩니다.
       </p>
     )
   }
 
-  const gridStyle = {
-    gridTemplateColumns: `64px repeat(${dates.length}, minmax(56px, 1fr))`,
+  // Calendar-style: 64px time label column + N date columns. Explicit row
+  // template so spans align across all date columns + the time-label column.
+  const gridStyle: React.CSSProperties = {
+    gridTemplateColumns: `64px repeat(${dates.length}, minmax(64px, 1fr))`,
+    gridTemplateRows: `auto repeat(${times.length}, 24px)`,
   }
 
   return (
     <div className="space-y-3">
-      <div className="overflow-x-auto rounded-xl bg-slate-50 p-2">
+      <div
+        className="max-h-[520px] overflow-auto rounded-xl border border-border bg-card p-2"
+        data-testid="timetable-horizontal"
+      >
         <div
-          className="grid gap-1 tabular-nums text-xs"
+          className="grid gap-x-1 gap-y-1 tabular-nums text-xs"
           style={gridStyle}
           role="grid"
           aria-label="가용 시간 히트맵"
         >
-          {/* Header row: empty corner + date labels */}
-          <div className="sticky left-0 z-10 bg-slate-50" />
-          {dates.map((date) => (
+          {/* Top-left corner */}
+          <div
+            style={{ gridColumn: 1, gridRow: 1 }}
+            className="sticky left-0 top-0 z-20 bg-card"
+          />
+
+          {/* Date headers (sticky top) */}
+          {dates.map((date, dIdx) => (
             <div
-              key={`h-${date}`}
-              className="px-2 py-2 text-center font-medium text-slate-700"
+              key={`th-${date}`}
+              style={{ gridColumn: dIdx + 2, gridRow: 1 }}
+              className="sticky top-0 z-10 bg-card px-1 py-2 text-center text-[11px] font-semibold text-foreground"
             >
               {formatDateLabel(date)}
             </div>
           ))}
 
-          {/* Body rows: time label + heatmap cells */}
-          {times.map((time) => {
-            const onHour = isOnHour(time)
-            const rowSpacingClass = onHour ? "mt-1" : ""
-            return (
-              <RowFragment
-                key={time}
-                time={time}
-                onHour={onHour}
-                rowSpacingClass={rowSpacingClass}
-                dates={dates}
-                slotByKey={slotByKey}
+          {/* Time labels column (sticky left) — one per row, 1-row spans */}
+          {times.map((time, tIdx) => (
+            <div
+              key={`tl-${time}`}
+              style={{ gridColumn: 1, gridRow: tIdx + 2 }}
+              className={cn(
+                "sticky left-0 z-10 flex items-center justify-end bg-card pr-2 text-[11px] tabular-nums",
+                isOnHour(time)
+                  ? "font-semibold text-foreground"
+                  : "text-muted-foreground/60",
+              )}
+            >
+              {isOnHour(time) ? time : ""}
+            </div>
+          ))}
+
+          {/* Body cells: each run is ONE grid item spanning `run.length` rows. */}
+          {dates.map((date, dIdx) =>
+            datesRuns[dIdx].map((run) => (
+              <CellBlock
+                key={`${date}-${run.startIdx}`}
+                run={run}
+                dateColIdx={dIdx}
                 participantCount={participantCount}
               />
-            )
-          })}
+            )),
+          )}
         </div>
       </div>
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-muted-foreground">
         셀의 색이 진할수록 더 많은 참여자가 가능한 시간입니다. 마우스를 올리면 닉네임이 표시됩니다.
       </p>
     </div>
   )
 }
 
-interface RowFragmentProps {
-  time: string
-  onHour: boolean
-  rowSpacingClass: string
-  dates: string[]
-  slotByKey: Map<string, TimetableSlot>
+interface CellBlockProps {
+  run: Run
+  dateColIdx: number
   participantCount: number
 }
 
-function RowFragment({
-  time,
-  onHour,
-  rowSpacingClass,
-  dates,
-  slotByKey,
-  participantCount,
-}: RowFragmentProps) {
-  return (
-    <>
-      <div
-        className={cn(
-          "sticky left-0 z-10 flex h-6 items-center justify-end bg-slate-50 pr-2 text-[11px]",
-          onHour ? "font-semibold text-slate-700" : "text-slate-400",
-          rowSpacingClass,
-        )}
-      >
-        {onHour ? time : ""}
-      </div>
-      {dates.map((date) => {
-        const key = makeKey(date, time)
-        const slot = slotByKey.get(key)
-        return (
-          <Cell
-            key={key}
-            slot={slot}
-            participantCount={participantCount}
-            rowSpacingClass={rowSpacingClass}
-          />
-        )
-      })}
-    </>
-  )
-}
+function CellBlock({ run, dateColIdx, participantCount }: CellBlockProps) {
+  const isMissing = run.count < 0
+  const isEmpty = run.count === 0
 
-interface CellProps {
-  slot: TimetableSlot | undefined
-  participantCount: number
-  rowSpacingClass: string
-}
-
-function Cell({ slot, participantCount, rowSpacingClass }: CellProps) {
-  // Disabled blank: this date+time pair isn't part of the meeting window.
-  if (!slot) {
+  if (isMissing) {
     return (
       <div
         aria-hidden="true"
-        className={cn("h-6 rounded-md bg-slate-100/60", rowSpacingClass)}
+        style={{
+          gridColumn: dateColIdx + 2,
+          gridRow: `${run.startIdx + 2} / span ${run.length}`,
+        }}
+        className="rounded-sm bg-card/50"
       />
     )
   }
 
-  const startLabel = formatKstTime(slot.start)
-  const endLabel = formatKstTime(slot.end)
-  const tooltip = `${startLabel} - ${endLabel}\n가능 ${slot.available_count}명${
-    slot.available_nicknames.length > 0
-      ? `\n참여자: ${slot.available_nicknames.join(", ")}`
-      : ""
-  }`
+  const startLabel = run.startSlot ? formatKstTime(run.startSlot.start) : ""
+  const endLabel = run.endSlot ? formatKstTime(run.endSlot.end) : ""
+  const tooltip = isEmpty
+    ? `${startLabel} - ${endLabel}\n가능 0명`
+    : `${startLabel} - ${endLabel}\n가능 ${run.count}명${
+        run.nicknames.length > 0 ? `\n참여자: ${run.nicknames.join(", ")}` : ""
+      }`
 
   return (
     <div
       title={tooltip}
       role="gridcell"
-      aria-label={`${startLabel} 가능 ${slot.available_count}명`}
+      aria-label={`${startLabel} 가능 ${run.count}명`}
+      style={{
+        gridColumn: dateColIdx + 2,
+        gridRow: `${run.startIdx + 2} / span ${run.length}`,
+        ...(isEmpty ? {} : intensityStyle(run.count, participantCount)),
+      }}
       className={cn(
-        "flex h-6 items-center justify-center rounded-md text-[10px] leading-none tabular-nums",
-        intensityClass(slot.available_count, participantCount),
-        rowSpacingClass,
+        "flex items-center justify-center rounded-sm text-[10px] leading-none tabular-nums",
+        isEmpty ? "border border-border bg-background" : "",
+        intensityTextClass(run.count),
       )}
     >
-      {slot.available_count > 0 ? slot.available_count : ""}
+      {isEmpty ? "" : run.count}
     </div>
   )
 }

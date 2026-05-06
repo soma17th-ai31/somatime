@@ -1,14 +1,40 @@
+// MeetingPage — Spec §6 vertical order:
+//   1. MeetingSummary (title/date/duration/target/location/buffer + progress)
+//   2. JoinSection (only when no participant cookie/nickname yet) — nickname + optional PIN + login foldout
+//   3. AvailabilitySection (after join — manual / ICS tabs)
+//   4. TimetableSection (horizontal grid)
+//   5. ResultSection: [결과 보기] / [추천받기], CandidateList, ConfirmSection
+//
+// v3.2 (2026-05-06 Path B): organizer_token concept retired entirely. Anyone
+// with the slug (= share URL) can run calculate / recommend / confirm. The
+// 2-step ShareMessageDialog is the sole accident safeguard.
+
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { Link, useParams, useSearchParams } from "react-router-dom"
-import { Card, CardContent } from "@/components/ui/card"
+import { Link, useParams } from "react-router-dom"
 import { ApiError, type Candidate, type ConfirmResponse, type MeetingDetail } from "@/lib/types"
 import { api } from "@/lib/api"
 import { MeetingSummary } from "./meeting/MeetingSummary"
 import { JoinSection } from "./meeting/JoinSection"
+import { CurrentParticipantCard } from "./meeting/CurrentParticipantCard"
 import { AvailabilitySection } from "./meeting/AvailabilitySection"
 import { TimetableSection } from "./meeting/TimetableSection"
 import { ShareMessageDialog } from "@/components/ShareMessageDialog"
 import { formatKstRange } from "@/lib/datetime"
+import { cn } from "@/lib/cn"
+
+// Layout breakpoint: when the meeting has many dates, the timetable + grid get
+// too wide for a 2-col split — fall back to a single-column stack.
+const TWO_COL_DATE_LIMIT = 5
+
+function countMeetingDates(meeting: MeetingDetail): number {
+  if (meeting.date_mode === "range") {
+    if (!meeting.date_range_start || !meeting.date_range_end) return 0
+    const start = new Date(`${meeting.date_range_start}T00:00:00`)
+    const end = new Date(`${meeting.date_range_end}T00:00:00`)
+    return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1)
+  }
+  return meeting.candidate_dates?.length ?? 0
+}
 
 const PARTICIPANT_LS_KEY = (slug: string) => `somameet_pt_local_${slug}`
 
@@ -30,9 +56,6 @@ function writeParticipantNickname(slug: string, nickname: string) {
 
 export default function MeetingPage() {
   const { slug } = useParams<{ slug: string }>()
-  const [searchParams] = useSearchParams()
-  const organizerToken = searchParams.get("org")
-  const isOrganizer = Boolean(organizerToken)
 
   const [meeting, setMeeting] = useState<MeetingDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -41,7 +64,7 @@ export default function MeetingPage() {
     slug ? readParticipantNickname(slug) : null,
   )
   const [refreshKey, setRefreshKey] = useState(0)
-  const [shareDialog, setShareDialog] = useState<{
+  const [confirmedDialog, setConfirmedDialog] = useState<{
     open: boolean
     message: string
     rangeLabel: string
@@ -79,9 +102,50 @@ export default function MeetingPage() {
     [slug, reloadMeeting],
   )
 
+  const useTwoColumnLayout = useMemo(
+    () => (meeting ? countMeetingDates(meeting) <= TWO_COL_DATE_LIMIT : true),
+    [meeting],
+  )
+
+  // v3.10 — soft real-time: poll meeting + timetable every 5s while the tab is
+  // visible and the meeting hasn't been confirmed. ManualAvailabilityForm is
+  // hardened so user-mid-edit selection isn't overwritten on each tick.
+  useEffect(() => {
+    if (!slug) return
+    if (meeting?.confirmed_slot) return // confirmed = no further sync needed
+
+    const POLL_INTERVAL_MS = 5_000
+    let cancelled = false
+
+    const tick = () => {
+      if (cancelled) return
+      if (typeof document !== "undefined" && document.hidden) return
+      void reloadMeeting()
+      setRefreshKey((k) => k + 1)
+    }
+    const id = window.setInterval(tick, POLL_INTERVAL_MS)
+
+    // Refetch immediately when the tab regains focus (catch up on missed updates).
+    const onVis = () => {
+      if (typeof document !== "undefined" && !document.hidden) tick()
+    }
+    if (typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", onVis)
+    }
+
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+      if (typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", onVis)
+      }
+    }
+  }, [slug, meeting?.confirmed_slot, reloadMeeting])
+
   const onConfirmed = useCallback(
     (response: ConfirmResponse, candidate: Candidate) => {
-      setShareDialog({
+      // Show a read-only "공유 메시지" dialog right after the confirm round-trips.
+      setConfirmedDialog({
         open: true,
         message: response.share_message_draft,
         rangeLabel: formatKstRange(candidate.start, candidate.end),
@@ -91,26 +155,14 @@ export default function MeetingPage() {
     [reloadMeeting],
   )
 
-  const headerBadge = useMemo(() => {
-    if (isOrganizer) {
-      return (
-        <span className="inline-flex items-center rounded-full bg-accent-muted px-3 py-1 text-xs font-medium text-accent">
-          주최자 모드
-        </span>
-      )
-    }
-    return (
-      <span className="inline-flex items-center rounded-full bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700">
-        참여자 모드
-      </span>
-    )
-  }, [isOrganizer])
+  // v3.2 (Path B): no organizer/participant split anywhere. The
+  // ShareMessageDialog 2-step gate is the only accident safeguard now.
 
   if (!slug) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-xl flex-col items-center justify-center p-8">
-        <p className="text-slate-700">잘못된 주소입니다.</p>
-        <Link to="/" className="mt-4 text-accent underline">
+      <main className="linear-container flex min-h-screen flex-col items-center justify-center gap-3">
+        <p className="text-foreground">잘못된 주소입니다.</p>
+        <Link to="/" className="text-primary underline-offset-2 hover:underline">
           홈으로
         </Link>
       </main>
@@ -119,74 +171,109 @@ export default function MeetingPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center p-8">
-        <p className="text-sm text-slate-600">회의 정보를 불러오는 중...</p>
+      <main className="linear-container flex min-h-screen flex-col items-center justify-center">
+        <p className="text-sm text-muted-foreground">회의 정보를 불러오는 중...</p>
       </main>
     )
   }
 
   if (loadError || !meeting) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-2xl flex-col items-center justify-center p-8 text-center">
-        <h1 className="text-xl font-semibold text-slate-900">회의를 불러올 수 없습니다</h1>
-        <p className="mt-2 text-sm text-slate-600">
+      <main className="linear-container flex min-h-screen flex-col items-center justify-center gap-3 text-center">
+        <h1 className="font-display text-2xl font-semibold tracking-[-0.5px] text-foreground">
+          회의를 불러올 수 없습니다
+        </h1>
+        <p className="text-sm text-muted-foreground">
           {loadError ?? "주소를 다시 확인해 주세요."}
         </p>
-        <Link to="/" className="mt-4 text-accent underline">
+        <Link to="/" className="text-primary underline-offset-2 hover:underline">
           홈으로
         </Link>
       </main>
     )
   }
 
+  function handleSwitchUser() {
+    if (slug) {
+      try {
+        window.localStorage.removeItem(PARTICIPANT_LS_KEY(slug))
+      } catch {
+        /* ignore */
+      }
+    }
+    setParticipantNickname(null)
+    void reloadMeeting()
+  }
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 p-6 sm:py-12">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+    <main className="linear-container flex min-h-screen flex-col gap-6 py-10 sm:py-14">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold text-slate-900">{meeting.title}</h1>
-          <p className="text-xs text-slate-500">slug: {meeting.slug}</p>
+          <h1 className="font-display text-[clamp(24px,3.2vw,36px)] font-semibold leading-[1.15] tracking-[-1px] text-foreground">
+            {meeting.title}
+          </h1>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">slug: {meeting.slug}</p>
         </div>
-        {headerBadge}
+        {participantNickname ? (
+          <CurrentParticipantCard
+            slug={slug}
+            nickname={participantNickname}
+            isRequired={(meeting.required_nicknames ?? []).includes(participantNickname)}
+            onRenamed={(newName) => {
+              writeParticipantNickname(slug, newName)
+              setParticipantNickname(newName)
+              void reloadMeeting()
+            }}
+            onSwitchUser={handleSwitchUser}
+          />
+        ) : null}
       </header>
 
-      <MeetingSummary meeting={meeting} isOrganizer={isOrganizer} />
-
-      {participantNickname ? (
-        <Card>
-          <CardContent className="flex items-center justify-between gap-3">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-                현재 참여자
-              </div>
-              <div className="mt-1 text-sm text-slate-800">{participantNickname}</div>
-            </div>
-            <p className="text-xs text-slate-500">
-              아래 가용 시간 입력에서 직접 입력 / ICS / Google 중 한 가지 방법을 선택하세요.
-            </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <JoinSection slug={slug} onJoined={onJoined} />
-      )}
-
-      {participantNickname ? (
-        <AvailabilitySection slug={slug} meeting={meeting} onSubmitted={onParticipantSubmitted} />
-      ) : null}
-
-      <TimetableSection
+      <MeetingSummary
         slug={slug}
         meeting={meeting}
-        isOrganizer={isOrganizer}
-        organizerToken={organizerToken}
-        refreshKey={refreshKey}
-        onConfirmed={onConfirmed}
+        onSettingsSaved={() => {
+          void reloadMeeting()
+          setRefreshKey((k) => k + 1)
+        }}
       />
 
+      {participantNickname ? null : <JoinSection slug={slug} onJoined={onJoined} />}
+
+      {participantNickname ? (
+        <div
+          className={cn(
+            "grid gap-6 lg:items-start",
+            useTwoColumnLayout ? "lg:grid-cols-2" : "lg:grid-cols-1",
+          )}
+        >
+          <AvailabilitySection
+            slug={slug}
+            meeting={meeting}
+            onSubmitted={onParticipantSubmitted}
+          />
+          <TimetableSection
+            slug={slug}
+            meeting={meeting}
+            refreshKey={refreshKey}
+            onConfirmed={onConfirmed}
+          />
+        </div>
+      ) : (
+        <TimetableSection
+          slug={slug}
+          meeting={meeting}
+          refreshKey={refreshKey}
+          onConfirmed={onConfirmed}
+        />
+      )}
+
       <ShareMessageDialog
-        open={shareDialog.open}
-        onOpenChange={(open) => setShareDialog((prev) => ({ ...prev, open }))}
-        message={shareDialog.message}
-        confirmedRange={shareDialog.rangeLabel}
+        open={confirmedDialog.open}
+        onOpenChange={(open) => setConfirmedDialog((prev) => ({ ...prev, open }))}
+        initialDraft={confirmedDialog.message}
+        confirmedRange={confirmedDialog.rangeLabel}
+        readOnly
       />
     </main>
   )

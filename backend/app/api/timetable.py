@@ -25,9 +25,14 @@ def get_timetable(
     meeting: Meeting = Depends(get_current_meeting),
     db: Session = Depends(get_db),
 ) -> TimetableResponse:
+    # v3.16 — same filter as /calculate / /recommend: only submitted participants
+    # enter the timetable pool so available_count reflects actual responses.
     participants = (
         db.query(Participant)
-        .filter(Participant.meeting_id == meeting.id)
+        .filter(
+            Participant.meeting_id == meeting.id,
+            Participant.confirmed_at.is_not(None),
+        )
         .order_by(Participant.created_at.asc())
         .all()
     )

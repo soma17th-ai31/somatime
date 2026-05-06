@@ -204,7 +204,7 @@ export function AvailabilityTimeline({ meeting, value, onChange }: AvailabilityT
 
   if (dates.length === 0 || totalMinutes <= 0) {
     return (
-      <div className="rounded-md border border-slate-300 p-4 text-sm text-slate-500">
+      <div className="rounded-md border border-border bg-card p-4 text-sm text-muted-foreground">
         표시할 날짜 또는 시간 범위가 없습니다.
       </div>
     )
@@ -228,16 +228,16 @@ export function AvailabilityTimeline({ meeting, value, onChange }: AvailabilityT
         return (
           <div
             key={date}
-            className="flex items-stretch gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+            className="surface-edge flex items-stretch gap-3 rounded-xl border border-border bg-card p-4"
           >
-            <div className="flex w-16 shrink-0 flex-col justify-center text-slate-700">
+            <div className="flex w-16 shrink-0 flex-col justify-center text-foreground">
               <span className="text-base font-semibold">{label.dayMonth}</span>
-              <span className="text-xs text-slate-500">{label.weekday}</span>
+              <span className="text-xs text-muted-foreground">{label.weekday}</span>
             </div>
 
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               {/* Hour tick labels above the bar */}
-              <div className="relative h-4 select-none text-[10px] tabular-nums text-slate-400">
+              <div className="relative h-4 select-none text-[10px] tabular-nums text-muted-foreground/70">
                 {hourTicks.map((tickMin) => {
                   const left = minToPercent(tickMin)
                   const hour = Math.floor(tickMin / 60)
@@ -258,7 +258,7 @@ export function AvailabilityTimeline({ meeting, value, onChange }: AvailabilityT
                 ref={(el) => registerBar(date, el)}
                 data-bar-date={date}
                 data-testid={`timeline-bar-${date}`}
-                className="relative w-full cursor-crosshair rounded-lg bg-slate-100 touch-none"
+                className="relative w-full cursor-crosshair touch-none rounded-lg border border-border bg-background"
                 style={{ height: BAR_HEIGHT_PX }}
                 onPointerDown={(e) => handlePointerDown(e, date)}
                 onPointerMove={handlePointerMove}
@@ -271,7 +271,7 @@ export function AvailabilityTimeline({ meeting, value, onChange }: AvailabilityT
                     <span
                       key={`tick-${tickMin}`}
                       aria-hidden
-                      className="absolute top-1/2 h-2 w-px -translate-y-1/2 bg-slate-300"
+                      className="absolute top-1/2 h-2 w-px -translate-y-1/2 bg-border"
                       style={{ left: `${left}%` }}
                     />
                   )
@@ -291,8 +291,8 @@ export function AvailabilityTimeline({ meeting, value, onChange }: AvailabilityT
                       data-testid={`range-${r.date}-${startLabel}-${endLabel}`}
                       className={cn(
                         "absolute top-1/2 flex -translate-y-1/2 items-center justify-center",
-                        "rounded-md bg-emerald-500 text-[11px] font-medium text-white shadow",
-                        "ring-1 ring-emerald-600/30 hover:bg-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-700",
+                        "rounded-md bg-primary text-[11px] font-medium text-primary-foreground shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]",
+                        "hover:bg-primary/85 focus:outline-none focus:ring-2 focus:ring-ring/50",
                       )}
                       style={{
                         left: `${left}%`,
@@ -321,7 +321,7 @@ export function AvailabilityTimeline({ meeting, value, onChange }: AvailabilityT
                 {isDragging ? (
                   <span
                     aria-hidden
-                    className="pointer-events-none absolute top-1/2 -translate-y-1/2 rounded-md bg-emerald-400/60 ring-1 ring-emerald-500/40"
+                    className="pointer-events-none absolute top-1/2 -translate-y-1/2 rounded-md bg-primary/55 ring-1 ring-primary/40"
                     style={{
                       left: `${minToPercent(Math.max(startMin, previewLo))}%`,
                       width: `${
@@ -338,7 +338,7 @@ export function AvailabilityTimeline({ meeting, value, onChange }: AvailabilityT
         )
       })}
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-muted-foreground">
         시간대를 드래그해서 가능한 시간을 추가하세요. 블록을 클릭하면 삭제됩니다.
       </p>
     </div>

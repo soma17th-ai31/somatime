@@ -31,6 +31,23 @@ def _envelope(error_code: str, message: str, suggestion: Optional[str] = None) -
     }
 
 
+# Spec §5.2 error code catalog. Used for documentation; routes raise
+# HTTPException with detail={error_code: ...}.
+KNOWN_ERROR_CODES = {
+    "meeting_not_found",
+    "participant_required",
+    "invalid_pin",
+    "pin_not_set",
+    "nickname_conflict",
+    "insufficient_responses",
+    "already_confirmed",
+    "ics_parse_failed",
+    "validation_error",
+    "candidate_not_in_windows",
+    "llm_unavailable",
+}
+
+
 async def _ics_parse_handler(request: Request, exc: ICSParseError) -> JSONResponse:
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -62,17 +79,23 @@ def _classify_http_error(exc: HTTPException) -> tuple[str, Optional[str]]:
 
 
 async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-    """Handle HTTPException including ones raised with detail=dict."""
+    """Handle HTTPException including ones raised with detail=dict.
+
+    Extra flat fields (e.g., insufficient_responses.current/required) are
+    preserved in the response object per spec §5.2.
+    """
     detail = exc.detail
     if isinstance(detail, dict) and "error_code" in detail:
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=_envelope(
-                error_code=str(detail.get("error_code", "http_error")),
-                message=str(detail.get("message", "")),
-                suggestion=detail.get("suggestion"),
-            ),
+        body = _envelope(
+            error_code=str(detail.get("error_code", "http_error")),
+            message=str(detail.get("message", "")),
+            suggestion=detail.get("suggestion"),
         )
+        # Forward any extra flat fields the route added (current/required/...).
+        for key, value in detail.items():
+            if key not in {"error_code", "message", "suggestion"}:
+                body[key] = value
+        return JSONResponse(status_code=exc.status_code, content=body)
 
     error_code, suggestion = _classify_http_error(exc)
     message = detail if isinstance(detail, str) else "Request failed."

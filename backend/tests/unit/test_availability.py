@@ -69,12 +69,10 @@ def test_normalize_and_merge_combines_normalize_then_merge() -> None:
 def _make_participant_in_meeting(db_session) -> Participant:
     meeting = Meeting(
         slug="testslug",
-        organizer_token="x" * 32,
         title="t",
         date_range_start=date(2026, 5, 11),
         date_range_end=date(2026, 5, 15),
         duration_minutes=60,
-        participant_count=2,
         location_type="online",
         time_window_start=time(9, 0),
         time_window_end=time(22, 0),

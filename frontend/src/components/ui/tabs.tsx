@@ -1,95 +1,58 @@
-import { createContext, useContext, useId, type ReactNode } from "react"
+import * as React from "react"
+import * as TabsPrimitive from "@radix-ui/react-tabs"
+
 import { cn } from "@/lib/cn"
 
-interface TabsContextValue {
-  value: string
-  onValueChange: (value: string) => void
-  baseId: string
-}
-
-const TabsContext = createContext<TabsContextValue | null>(null)
-
-interface TabsProps {
-  value: string
-  onValueChange: (value: string) => void
-  children: ReactNode
-  className?: string
-}
-
-export function Tabs({ value, onValueChange, children, className }: TabsProps) {
-  const baseId = useId()
+function Tabs({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Root>) {
   return (
-    <TabsContext.Provider value={{ value, onValueChange, baseId }}>
-      <div className={className}>{children}</div>
-    </TabsContext.Provider>
+    <TabsPrimitive.Root
+      data-slot="tabs"
+      className={cn("flex flex-col gap-4", className)}
+      {...props}
+    />
   )
 }
 
-function useTabsContext() {
-  const ctx = useContext(TabsContext)
-  if (!ctx) throw new Error("Tabs subcomponents must be inside <Tabs>")
-  return ctx
-}
-
-export function TabsList({ children, className }: { children: ReactNode; className?: string }) {
+function TabsList({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.List>) {
   return (
-    <div
-      role="tablist"
+    <TabsPrimitive.List
+      data-slot="tabs-list"
       className={cn(
-        "inline-flex h-10 items-center justify-start gap-1 rounded-md bg-surface-muted p-1",
+        "inline-flex h-10 w-fit items-center justify-center rounded-md border border-border bg-background p-1 text-muted-foreground",
         className,
       )}
-    >
-      {children}
-    </div>
+      {...props}
+    />
   )
 }
 
-interface TabsTriggerProps {
-  value: string
-  children: ReactNode
-  className?: string
-}
-
-export function TabsTrigger({ value, children, className }: TabsTriggerProps) {
-  const ctx = useTabsContext()
-  const isActive = ctx.value === value
-  const id = `${ctx.baseId}-trigger-${value}`
-  const panelId = `${ctx.baseId}-panel-${value}`
+function TabsTrigger({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.Trigger>) {
   return (
-    <button
-      type="button"
-      id={id}
-      role="tab"
-      aria-selected={isActive}
-      aria-controls={panelId}
-      tabIndex={isActive ? 0 : -1}
-      onClick={() => ctx.onValueChange(value)}
+    <TabsPrimitive.Trigger
+      data-slot="tabs-trigger"
       className={cn(
-        "inline-flex h-8 items-center justify-center rounded px-3 text-sm font-medium transition-colors",
-        isActive ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900",
+        "inline-flex h-8 items-center justify-center rounded-sm px-3 text-sm font-medium whitespace-nowrap transition-colors outline-none data-[state=active]:bg-secondary data-[state=active]:text-foreground focus-visible:ring-[2px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50",
         className,
       )}
-    >
-      {children}
-    </button>
+      {...props}
+    />
   )
 }
 
-interface TabsContentProps {
-  value: string
-  children: ReactNode
-  className?: string
-}
-
-export function TabsContent({ value, children, className }: TabsContentProps) {
-  const ctx = useTabsContext()
-  if (ctx.value !== value) return null
-  const id = `${ctx.baseId}-panel-${value}`
-  const triggerId = `${ctx.baseId}-trigger-${value}`
+function TabsContent({
+  className,
+  ...props
+}: React.ComponentProps<typeof TabsPrimitive.Content>) {
   return (
-    <div role="tabpanel" id={id} aria-labelledby={triggerId} className={cn("mt-4", className)}>
-      {children}
-    </div>
+    <TabsPrimitive.Content
+      data-slot="tabs-content"
+      className={cn("outline-none", className)}
+      {...props}
+    />
   )
 }
+
+export { Tabs, TabsList, TabsTrigger, TabsContent }

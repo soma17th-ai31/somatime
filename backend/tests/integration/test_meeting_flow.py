@@ -1,7 +1,9 @@
-"""End-to-end DB flow against the FastAPI app (skipped until backend-api lands).
+"""End-to-end DB flow against the FastAPI app.
 
 Covers the happy path: create meeting -> get -> register participants ->
 manual availability -> calculate -> confirm.
+
+v3.2 (Path B): organizer_token / X-Organizer-Token gating retired entirely.
 """
 from __future__ import annotations
 
@@ -12,7 +14,6 @@ def _create_meeting(client) -> dict:
         "date_range_start": "2026-05-11",
         "date_range_end": "2026-05-15",
         "duration_minutes": 60,
-        "participant_count": 3,
         "location_type": "online",
         "time_window_start": "09:00",
         "time_window_end": "22:00",
@@ -23,12 +24,13 @@ def _create_meeting(client) -> dict:
     return resp.json()
 
 
-def test_create_returns_slug_and_token(client) -> None:
+def test_create_returns_slug_and_share_url(client) -> None:
     data = _create_meeting(client)
     assert len(data["slug"]) == 8
-    assert len(data["organizer_token"]) >= 32
     assert data["slug"] in data["share_url"]
-    assert "org=" in data["organizer_url"]
+    # v3.2: organizer_token / organizer_url removed from response.
+    assert "organizer_token" not in data
+    assert "organizer_url" not in data
 
 
 def test_get_meeting_by_slug(client) -> None:
@@ -62,7 +64,6 @@ def test_register_participant_then_submit_manual(client) -> None:
 def test_full_flow_calculate_and_confirm(client) -> None:
     data = _create_meeting(client)
     slug = data["slug"]
-    organizer_token = data["organizer_token"]
 
     # 3 participants, all with no busy blocks -> entire window is free.
     nicks = ["a", "b", "c"]
@@ -80,12 +81,17 @@ def test_full_flow_calculate_and_confirm(client) -> None:
     assert len(body["candidates"]) <= 3
 
     first = body["candidates"][0]
+    # v3 — POST /confirm body must include share_message_draft (Q9).
+    # v3.2 — no X-Organizer-Token header.
     confirm = client.post(
         f"/api/meetings/{slug}/confirm",
-        json={"slot_start": first["start"], "slot_end": first["end"]},
-        headers={"X-Organizer-Token": organizer_token},
+        json={
+            "slot_start": first["start"],
+            "slot_end": first["end"],
+            "share_message_draft": "'팀 회의' 일정 안내드립니다.",
+        },
     )
     assert confirm.status_code == 200
     body = confirm.json()
     assert body["confirmed_slot"]["start"] == first["start"]
-    assert "share_message_draft" in body
+    assert body["share_message_draft"] == "'팀 회의' 일정 안내드립니다."

@@ -1,17 +1,20 @@
-import { forwardRef, type InputHTMLAttributes } from "react"
+import * as React from "react"
+
 import { cn } from "@/lib/cn"
 
-export const Checkbox = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
-  ({ className, ...props }, ref) => (
-    <input
-      ref={ref}
-      type="checkbox"
-      className={cn(
-        "h-4 w-4 rounded border border-surface-border text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
-        className,
-      )}
-      {...props}
-    />
-  ),
-)
+export const Checkbox = React.forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement>
+>(({ className, ...props }, ref) => (
+  <input
+    ref={ref}
+    type="checkbox"
+    data-slot="checkbox"
+    className={cn(
+      "h-4 w-4 rounded border border-border bg-input text-primary accent-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+      className,
+    )}
+    {...props}
+  />
+))
 Checkbox.displayName = "Checkbox"

@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Local dev artifacts
+.env
+.env.*
+!.env.example
+*.db
+*.sqlite
+*.sqlite3
+e2e.db
+somameet.db
+
+# Editor / OS noise
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# VCS
+.git
+.gitignore
+.gitattributes
+
+# Build artifacts
+dist/
+build/
+htmlcov/
+.coverage
+.coverage.*
+
+# Tests / scripts not needed in image
+tests/
+test-results/

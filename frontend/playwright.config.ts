@@ -86,12 +86,11 @@ export default defineConfig({
       stderr: "pipe",
       env: {
         DATABASE_URL: BACKEND_DATABASE_URL,
+        // v3 — `template` provider runs without UPSTAGE_API_KEY. Privacy guard
+        // is identical (build_recommendation_payload runs on both paths).
         LLM_PROVIDER: "template",
         APP_BASE_URL: "http://localhost:5173",
         SESSION_SECRET: "e2e-session-secret-32-chars-long-string",
-        // Force these blank so /availability/google/oauth-url returns 503 (we don't exercise OAuth in E1).
-        GOOGLE_CLIENT_ID: "",
-        GOOGLE_CLIENT_SECRET: "",
         // Make sure the `e2e.db` resolves predictably regardless of caller cwd.
         E2E_DB_PATH,
       },

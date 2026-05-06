@@ -1,14 +1,21 @@
 // Types mirrored from backend Pydantic schemas. Keep in sync with backend/app/schemas/*.
+// v3 — 2026-05-06.
 
 export type LocationType = "online" | "offline" | "any"
 
+export type DateMode = "range" | "picked"
+
+export type LlmSource = "llm" | "deterministic_fallback" | "deterministic"
+
 export interface MeetingCreateRequest {
   title: string
-  date_range_start: string // YYYY-MM-DD
-  date_range_end: string // YYYY-MM-DD
+  date_mode: DateMode
+  date_range_start: string | null // YYYY-MM-DD
+  date_range_end: string | null
+  candidate_dates: string[] | null
   duration_minutes: number
-  participant_count: number
   location_type: LocationType
+  offline_buffer_minutes: number
   time_window_start: string // HH:MM
   time_window_end: string // HH:MM
   include_weekends: boolean
@@ -16,8 +23,6 @@ export interface MeetingCreateRequest {
 
 export interface MeetingCreateResponse {
   slug: string
-  organizer_token: string
-  organizer_url: string
   share_url: string
 }
 
@@ -26,20 +31,49 @@ export interface ConfirmedSlot {
   end: string
 }
 
-export interface MeetingDetail {
-  slug: string
-  title: string
-  date_range_start: string
-  date_range_end: string
+// v3.19 — payload for PATCH /meetings/{slug}/settings.
+export interface MeetingSettingsUpdate {
+  date_mode: DateMode
+  date_range_start: string | null
+  date_range_end: string | null
+  candidate_dates: string[] | null
   duration_minutes: number
-  participant_count: number
   location_type: LocationType
+  offline_buffer_minutes: number
   time_window_start: string
   time_window_end: string
   include_weekends: boolean
+}
+
+export interface MeetingDetail {
+  slug: string
+  title: string
+  date_mode: DateMode
+  date_range_start: string | null
+  date_range_end: string | null
+  candidate_dates: string[] | null
+  duration_minutes: number
+  // v3.1 simplify pass: target_count / participant_count are gone.
+  // Readiness now flips on submitted_count >= 1.
+  submitted_count: number
+  // Nicknames of participants who have submitted (in submission order).
+  submitted_nicknames?: string[]
+  // v3.11 — nicknames of participants who self-marked as required attendees
+  // (e.g. mentor for a special lecture). Subset of all participants.
+  required_nicknames?: string[]
+  is_ready_to_calculate: boolean
+  location_type: LocationType
+  offline_buffer_minutes: number
+  time_window_start: string
+  time_window_end: string
+  include_weekends: boolean
+  share_url: string
+  // v3.6: present (and possibly empty []) when the caller has the participant
+  // cookie; null/undefined for anonymous reads. Pre-fills the manual form.
+  my_busy_blocks?: { start: string; end: string }[] | null
   confirmed_slot: ConfirmedSlot | null
-  participants_registered: number
-  created_at: string
+  confirmed_share_message: string | null
+  created_at?: string
 }
 
 export interface BusyBlock {
@@ -47,9 +81,22 @@ export interface BusyBlock {
   end: string
 }
 
-export interface ParticipantJoinResponse {
+export interface ParticipantResponse {
   participant_id: number
   nickname: string
+}
+
+// Backwards-compat alias.
+export type ParticipantJoinResponse = ParticipantResponse
+
+export interface ParticipantJoinRequest {
+  nickname: string
+  pin?: string | null
+}
+
+export interface ParticipantLoginRequest {
+  nickname: string
+  pin: string
 }
 
 export interface ManualAvailabilityRequest {
@@ -59,7 +106,7 @@ export interface ManualAvailabilityRequest {
 export interface AvailabilitySubmitResponse {
   participant_id: number
   busy_block_count: number
-  source_type: "google" | "ics" | "manual"
+  source_type: "ics" | "manual"
 }
 
 export interface IcsErrorResponse {
@@ -68,22 +115,31 @@ export interface IcsErrorResponse {
   suggestion?: string
 }
 
-export interface GoogleOAuthUrlResponse {
-  oauth_url: string
-}
-
 export interface Candidate {
   start: string
   end: string
   available_count: number
   missing_participants: string[]
-  reason: string
+  reason: string | null
+  share_message_draft?: string | null
   note?: string | null
 }
 
 export interface CalculateResponse {
+  summary: string | null
+  best_available_count?: number
+  total_participants?: number
   candidates: Candidate[]
+  source: LlmSource
   suggestion: string | null
+}
+
+export interface RecommendResponse {
+  summary: string | null
+  candidates: Candidate[]
+  source: LlmSource
+  llm_call_count?: number
+  suggestion?: string | null
 }
 
 export interface TimetableSlot {
@@ -100,6 +156,7 @@ export interface TimetableResponse {
 export interface ConfirmRequest {
   slot_start: string
   slot_end: string
+  share_message_draft: string
 }
 
 export interface ConfirmResponse {
