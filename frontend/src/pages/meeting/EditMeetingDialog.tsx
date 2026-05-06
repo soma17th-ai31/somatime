@@ -6,7 +6,6 @@
 import { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Dialog, DialogFooter, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -283,14 +282,6 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
               />
             </div>
           </div>
-
-          <label className="inline-flex items-center gap-2 text-sm text-foreground">
-            <Checkbox
-              checked={includeWeekends}
-              onChange={(e) => setIncludeWeekends((e.target as HTMLInputElement).checked)}
-            />
-            주말도 포함
-          </label>
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}
 

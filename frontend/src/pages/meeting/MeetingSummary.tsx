@@ -82,7 +82,6 @@ export function MeetingSummary({ slug, meeting, onSettingsSaved }: Props) {
             </dt>
             <dd className="mt-1 text-foreground">
               매일 {meeting.time_window_start} ~ {meeting.time_window_end}
-              {meeting.include_weekends ? " (주말 포함)" : " (주말 제외)"}
             </dd>
           </div>
           <div>

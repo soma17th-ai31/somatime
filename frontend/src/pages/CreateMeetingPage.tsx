@@ -23,7 +23,6 @@ import {
 } from "@/lib/types"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
@@ -113,7 +112,9 @@ const defaultValues: FormValues = {
   offline_buffer_minutes: 60,
   time_window_start: "09:00",
   time_window_end: "22:00",
-  include_weekends: false,
+  // v3.21 — "주말도 포함" 체크박스 UI 가 제거되어 항상 true 로 시작합니다.
+  // 주말 제외 회의를 만들고 싶으면 picked 모드에서 평일만 골라 주세요.
+  include_weekends: true,
 }
 
 const LOCATION_OPTIONS: Array<{ value: LocationType; label: string }> = [
@@ -404,10 +405,6 @@ export default function CreateMeetingPage() {
                   ) : null}
                 </div>
 
-                <label className="inline-flex items-center gap-2 text-sm text-foreground">
-                  <Checkbox {...register("include_weekends")} />
-                  주말도 포함
-                </label>
               </section>
             </div>
 
