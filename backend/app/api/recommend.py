@@ -176,15 +176,28 @@ def _validate_llm_output(
     """Validate + enrich LLM candidates against windows.
 
     Wraps scheduler.validate_and_enrich and serializes datetimes to KST-aware
-    so the response includes +09:00 offsets.
+    so the response includes +09:00 offsets. v3.27 — also enforces the
+    spec §7 "후보 간 2시간+ 간격" rule on the LLM path so the model can't
+    return adjacent or overlapping candidate windows (e.g. 11:00 + 11:30).
     """
-    from app.services.scheduler import validate_and_enrich
+    from app.services.scheduler import SPREAD_MIN_MINUTES, validate_and_enrich
 
     raw_candidates = llm_output.get("candidates")
     if not isinstance(raw_candidates, list):
         raise CandidateValidationError("LLM output missing 'candidates' list")
 
     enriched = validate_and_enrich(raw_candidates, windows, meeting)
+
+    # Enforce 2h+ spread between candidate start times.
+    for i in range(len(enriched)):
+        for j in range(i + 1, len(enriched)):
+            gap = abs(int((enriched[j].start - enriched[i].start).total_seconds() // 60))
+            if gap < SPREAD_MIN_MINUTES:
+                raise CandidateValidationError(
+                    f"candidates {i} and {j} are only {gap}min apart "
+                    f"(must be ≥ {SPREAD_MIN_MINUTES}min spread)"
+                )
+
     return [
         c.model_copy(
             update={

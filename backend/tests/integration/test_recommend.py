@@ -83,9 +83,22 @@ def test_recommend_happy_path_one_llm_call(client) -> None:
     class _MockAdapter:
         def recommend(self, candidate_windows, meeting, max_candidates=3):
             spy_calls["count"] += 1
+            # v3.27 — _validate_llm_output enforces 2h+ spread between
+            # candidates, so the mock picks windows that are at least 120min
+            # apart to match the real LLM contract.
+            from datetime import timedelta
+
             iso_pairs = []
-            for w in candidate_windows[:2]:
-                iso_pairs.append((w.start.isoformat(), w.end.isoformat()))
+            last_start = None
+            for w in candidate_windows:
+                if last_start is None or (w.start - last_start) >= timedelta(minutes=120):
+                    iso_pairs.append((w.start.isoformat(), w.end.isoformat()))
+                    last_start = w.start
+                if len(iso_pairs) >= 2:
+                    break
+            if not iso_pairs:
+                first = candidate_windows[0]
+                iso_pairs.append((first.start.isoformat(), first.end.isoformat()))
             return {
                 "summary": "오후 추천",
                 "candidates": [
