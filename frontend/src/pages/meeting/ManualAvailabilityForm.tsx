@@ -17,6 +17,11 @@ interface Props {
   slug: string
   meeting: MeetingDetail
   onSubmitted: () => void
+  // v3.24 — ICS upload pre-fill pipeline. AvailabilitySection passes parsed
+  // busy_blocks here when the user uploads an ICS file; the form converts
+  // them to selected cells and clears the pending state via onPendingIcsApplied.
+  pendingIcsBlocks?: { start: string; end: string }[] | null
+  onPendingIcsApplied?: () => void
 }
 
 type InputMode = "timeline" | "grid"
@@ -35,7 +40,13 @@ function readInitialMode(): InputMode {
   return DEFAULT_MODE
 }
 
-export function ManualAvailabilityForm({ slug, meeting, onSubmitted }: Props) {
+export function ManualAvailabilityForm({
+  slug,
+  meeting,
+  onSubmitted,
+  pendingIcsBlocks,
+  onPendingIcsApplied,
+}: Props) {
   const { toast } = useToast()
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [submitting, setSubmitting] = useState(false)
@@ -71,6 +82,16 @@ export function ManualAvailabilityForm({ slug, meeting, onSubmitted }: Props) {
     setSelected(selectedFromBusyBlocks(meeting, meeting.my_busy_blocks))
     lastAppliedKeyRef.current = myBlocksKey
   }, [myBlocksKey, meeting])
+
+  // v3.24 — when ICS upload hands us parsed busy_blocks, immediately convert
+  // them to a selected Set (= available = allCells - busyCells) so the user
+  // can review on the grid. Then clear the pending so a single tab-switch
+  // doesn't re-apply repeatedly.
+  useEffect(() => {
+    if (!pendingIcsBlocks) return
+    setSelected(selectedFromBusyBlocks(meeting, pendingIcsBlocks))
+    onPendingIcsApplied?.()
+  }, [pendingIcsBlocks, meeting, onPendingIcsApplied])
 
   function selectAll() {
     setSelected(new Set(allCells))

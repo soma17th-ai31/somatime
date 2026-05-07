@@ -153,6 +153,17 @@ export const api = {
     )
   },
 
+  // v3.24 — parse ICS without saving. Returns busy_blocks for client-side
+  // pre-fill so the user can review/edit before committing via /availability/manual.
+  parseIcs(slug: string, file: File) {
+    const fd = new FormData()
+    fd.append("file", file)
+    return request<{ busy_blocks: { start: string; end: string }[] }>(
+      `/api/meetings/${encodeURIComponent(slug)}/availability/ics/parse`,
+      { method: "POST", body: fd, isFormData: true },
+    )
+  },
+
   getTimetable(slug: string) {
     return request<TimetableResponse>(`/api/meetings/${encodeURIComponent(slug)}/timetable`)
   },

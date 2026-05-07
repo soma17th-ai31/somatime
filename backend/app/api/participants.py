@@ -95,11 +95,18 @@ def register_participant(
             token = existing.token
             participant_id = existing.id
         else:
-            # Pre-submit re-register: refresh cookie + optionally set PIN.
+            # Pre-submit re-register: refresh cookie + optionally update PIN /
+            # is_required. Both fields update only when explicitly provided.
             token = existing.token
             participant_id = existing.id
+            mutated = False
             if payload.pin is not None:
                 existing.pin = payload.pin
+                mutated = True
+            if payload.is_required is not None:
+                existing.is_required = bool(payload.is_required)
+                mutated = True
+            if mutated:
                 db.add(existing)
                 db.commit()
     else:
@@ -112,6 +119,7 @@ def register_participant(
             source_type=None,
             confirmed_at=None,
             created_at=now_kst_naive(),
+            is_required=bool(payload.is_required) if payload.is_required is not None else False,
         )
         db.add(participant)
         db.commit()

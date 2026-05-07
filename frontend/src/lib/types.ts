@@ -92,6 +92,7 @@ export type ParticipantJoinResponse = ParticipantResponse
 export interface ParticipantJoinRequest {
   nickname: string
   pin?: string | null
+  is_required?: boolean
 }
 
 export interface ParticipantLoginRequest {

@@ -73,3 +73,28 @@ def submit_ics(
         "source_type": "ics",
         "blocks_count": len(new_rows),
     }
+
+
+@router.post(
+    "/meetings/{slug}/availability/ics/parse",
+    status_code=status.HTTP_200_OK,
+)
+def parse_ics_preview(
+    file: UploadFile = File(...),
+    participant: Participant = Depends(get_participant),
+) -> dict:
+    """v3.24 — parse only, don't save.
+
+    Returns the parsed busy_blocks so the frontend can pre-fill the manual
+    grid for review/edit before the user clicks `가용 시간 저장`.
+    """
+    content = file.file.read()
+    blocks = parse_ics(content)
+    # Drop the `_` (participant) — endpoint requires the cookie just so we
+    # don't expose ICS parsing as an open utility on the slug.
+    _ = participant
+    return {
+        "busy_blocks": [
+            {"start": s.isoformat(), "end": e.isoformat()} for s, e in blocks
+        ],
+    }

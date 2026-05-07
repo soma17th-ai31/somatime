@@ -40,9 +40,14 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="SomaMeet API", version="0.3.0")
 
+    # v3.22 — Vercel preview/production URLs change per deploy (e.g.
+    # `soma-meet-<hash>-<scope>.vercel.app`). Allow any subdomain of
+    # vercel.app via regex AND keep explicit allow_origins for any custom
+    # domains the user has set in CORS_EXTRA_ORIGINS.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_allowed_origins,
+        allow_origin_regex=r"^https://[^/]*\.vercel\.app$",
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

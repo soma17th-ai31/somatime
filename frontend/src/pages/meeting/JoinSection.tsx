@@ -10,6 +10,7 @@
 // exposes a separate login form.
 
 import { useState } from "react"
+import { Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -29,6 +30,7 @@ export function JoinSection({ slug, onJoined }: Props) {
   const { toast } = useToast()
   const [nickname, setNickname] = useState("")
   const [pin, setPin] = useState("")
+  const [isRequired, setIsRequired] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -55,8 +57,14 @@ export function JoinSection({ slug, onJoined }: Props) {
       const res = await api.joinMeeting(slug, {
         nickname: trimmed,
         pin: pin.length > 0 ? pin : undefined,
+        is_required: isRequired || undefined,
       })
-      toast(`${res.nickname}님으로 진입했습니다.`, "success")
+      toast(
+        isRequired
+          ? `${res.nickname}님으로 진입했습니다. 필수 참여자로 표시되었습니다.`
+          : `${res.nickname}님으로 진입했습니다.`,
+        "success",
+      )
       onJoined(res.nickname)
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "등록에 실패했습니다."
@@ -109,6 +117,23 @@ export function JoinSection({ slug, onJoined }: Props) {
             처음 등록 시 PIN을 함께 설정해두면 다른 기기에서도 같은 닉네임으로 다시 진입할 수
             있습니다.
           </p>
+          <label className="inline-flex items-center gap-2 text-sm text-foreground">
+            <input
+              type="checkbox"
+              checked={isRequired}
+              onChange={(e) => setIsRequired(e.target.checked)}
+              className="h-4 w-4 rounded border-border accent-primary"
+              data-testid="join-required-checkbox"
+            />
+            <Star
+              className={
+                isRequired
+                  ? "h-3.5 w-3.5 text-primary"
+                  : "h-3.5 w-3.5 text-muted-foreground"
+              }
+            />
+            <span>필수 참여자 (예: 멘토 — 빠지면 안 되는 회의)</span>
+          </label>
           <div className="flex flex-wrap items-center gap-3">
             <Button type="submit" disabled={submitting} data-testid="join-submit">
               {submitting ? "확인 중..." : "로그인"}

@@ -209,7 +209,14 @@ export default function MeetingPage() {
     <main className="linear-container flex min-h-screen flex-col gap-6 py-10 sm:py-14">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="font-display text-[clamp(24px,3.2vw,36px)] font-semibold leading-[1.15] tracking-[-1px] text-foreground">
+          <Link
+            to="/"
+            className="text-xs text-muted-foreground underline-offset-2 hover:text-primary hover:underline"
+            data-testid="back-to-home"
+          >
+            ← 홈으로
+          </Link>
+          <h1 className="mt-1 font-display text-[clamp(24px,3.2vw,36px)] font-semibold leading-[1.15] tracking-[-1px] text-foreground">
             {meeting.title}
           </h1>
           <p className="mt-1 font-mono text-xs text-muted-foreground">slug: {meeting.slug}</p>

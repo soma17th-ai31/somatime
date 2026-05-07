@@ -1,5 +1,5 @@
 // Inline participant identity widget for the meeting page header.
-// v3.6 — read mode = compact pill (nickname + 수정 + 다른 사용자로 전환).
+// v3.6 — read mode = compact pill (nickname + 수정 + 로그아웃).
 //          edit mode = inline form (nickname + optional PIN, 4-digit).
 // v3.11 — edit mode also exposes a "필수 참여자" checkbox so a mentor /
 //          required attendee can self-mark; recommend.py promotes any
@@ -10,7 +10,7 @@
 //   is_required: omit = 변경 없음 / true|false = 명시적 설정.
 
 import { useEffect, useState } from "react"
-import { Pencil, X, Check, Loader2, LogIn, Star } from "lucide-react"
+import { Pencil, X, Check, Loader2, LogOut, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -171,11 +171,11 @@ export function CurrentParticipantCard({
           variant="outline"
           size="sm"
           onClick={onSwitchUser}
-          aria-label="다른 사용자로 전환"
+          aria-label="로그아웃"
           data-testid="switch-user"
         >
-          <LogIn className="h-3.5 w-3.5" />
-          다른 사용자
+          <LogOut className="h-3.5 w-3.5" />
+          로그아웃
         </Button>
       </div>
     )

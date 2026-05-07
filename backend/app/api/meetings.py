@@ -135,12 +135,17 @@ def get_meeting(
     submitted_names = list_submitted_nicknames(db, meeting.id)
     required_names = list_required_nicknames(db, meeting.id)
 
-    # v3.6: when a participant cookie is present, expose only that participant's
-    # busy_blocks so the form can pre-fill on refresh. Other participants' input
-    # never leaks here.
+    # v3.6 / v3.25 — when a participant cookie is present AND that participant
+    # has actually submitted availability (confirmed_at IS NOT NULL), expose
+    # their busy_blocks so the form can pre-fill on refresh.
+    #   - Unsubmitted participant (cookie issued, no submit yet) → None.
+    #     Frontend treats this as "no prior data" and starts with an empty grid.
+    #   - Submitted with zero busy_blocks → [] (= "I'm free everywhere").
+    #     Frontend pre-fills the grid as fully available.
+    # This split fixes the "first visit shows the grid completely filled" bug.
     me = get_optional_participant(request, meeting.slug, db)
     my_busy_blocks: Optional[List[ConfirmedSlotInfo]] = None
-    if me is not None:
+    if me is not None and me.confirmed_at is not None:
         rows = (
             db.query(BusyBlock)
             .filter(BusyBlock.participant_id == me.id)

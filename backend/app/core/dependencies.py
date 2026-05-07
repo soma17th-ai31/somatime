@@ -37,18 +37,27 @@ def cookie_name_for(slug: str) -> str:
 def set_participant_cookie(response: Response, slug: str, token: str) -> None:
     """Write the per-meeting participant cookie per spec §6.2.
 
-    HttpOnly + SameSite=Lax + Path=/ + Max-Age=604800. Secure read from env.
+    HttpOnly + SameSite + Path=/ + Max-Age=604800. Secure / SameSite read
+    from env. v3.23 — when running cross-site (SameSite=None + Secure) we
+    also tack on the `Partitioned` attribute (CHIPS) so iOS Safari and
+    mobile Chrome with strict third-party cookie policies still keep the
+    cookie. Starlette<0.36 doesn't expose `partitioned`, so we build the
+    Set-Cookie header by hand.
     """
     settings = get_settings()
-    response.set_cookie(
-        key=cookie_name_for(slug),
-        value=token,
-        httponly=True,
-        samesite=settings.COOKIE_SAMESITE,
-        secure=settings.COOKIE_SECURE,
-        path="/",
-        max_age=COOKIE_MAX_AGE_SECONDS,
-    )
+    same_site = settings.COOKIE_SAMESITE.capitalize()  # Lax / None / Strict
+    parts = [
+        f"{cookie_name_for(slug)}={token}",
+        f"Max-Age={COOKIE_MAX_AGE_SECONDS}",
+        "Path=/",
+        "HttpOnly",
+        f"SameSite={same_site}",
+    ]
+    if settings.COOKIE_SECURE:
+        parts.append("Secure")
+        if settings.COOKIE_SAMESITE.lower() == "none":
+            parts.append("Partitioned")
+    response.headers.append("Set-Cookie", "; ".join(parts))
 
 
 def get_current_meeting(

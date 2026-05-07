@@ -27,6 +27,13 @@ if str(BACKEND_ROOT) not in sys.path:
 # but always override the provider.
 os.environ.setdefault("SESSION_SECRET", "test-session-secret-32-chars-minimum-xxx")
 os.environ["LLM_PROVIDER"] = "template"
+# v3.22 — TestClient transports over http://, so cookies with Secure=true
+# are dropped between requests. Force the test env to insecure-cookie so
+# /participants → /availability/manual round-trips carry the cookie.
+# Production .env can still set COOKIE_SECURE=true; load_dotenv() in
+# app/main.py uses override=False (default), so these test presets win.
+os.environ["COOKIE_SECURE"] = "false"
+os.environ["COOKIE_SAMESITE"] = "lax"
 
 
 # --------------------------------------------------------------------- DB plumbing

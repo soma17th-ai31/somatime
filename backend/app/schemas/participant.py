@@ -24,10 +24,18 @@ def _validate_pin(value: Optional[str]) -> Optional[str]:
 
 
 class ParticipantCreate(BaseModel):
-    """POST /api/meetings/{slug}/participants body."""
+    """POST /api/meetings/{slug}/participants body.
+
+    v3.26: `is_required` can be supplied at registration time so a mentor /
+    required attendee marks themselves as 필수 in a single step (instead of
+    register → edit → toggle). When omitted, defaults to False for the new
+    participant; for the pre-submit re-register path the field is updated
+    only when explicitly provided (None → leave existing value alone).
+    """
 
     nickname: str = Field(min_length=1, max_length=50)
     pin: Optional[str] = Field(default=None, max_length=8)
+    is_required: Optional[bool] = Field(default=None)
 
     @field_validator("pin", mode="before")
     @classmethod
