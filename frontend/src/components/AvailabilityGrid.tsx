@@ -2,7 +2,7 @@
 // v3.4: rows = 30-min times, columns = dates (구글 캘린더 주간 뷰처럼).
 // Default = unselected (white). Drag to mark cells available (primary).
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { MeetingDetail } from "@/lib/types"
 import {
   formatDateLabel,
@@ -20,6 +20,7 @@ interface AvailabilityGridProps {
 }
 
 type PaintMode = "selecting" | "deselecting" | null
+type DateSelectionState = "none" | "partial" | "all"
 
 export function AvailabilityGrid({ meeting, value, onChange }: AvailabilityGridProps) {
   const dates = getMeetingDates(meeting)
@@ -29,6 +30,7 @@ export function AvailabilityGrid({ meeting, value, onChange }: AvailabilityGridP
   const touchedRef = useRef<Set<string>>(new Set())
   const liveSelectedRef = useRef<Set<string>>(value)
   liveSelectedRef.current = value
+  const [isScrolled, setIsScrolled] = useState(false)
 
   useEffect(() => {
     function endPaint() {
@@ -102,6 +104,38 @@ export function AvailabilityGrid({ meeting, value, onChange }: AvailabilityGridP
     if (key) applyPaint(key, paintModeRef.current)
   }
 
+  function handleScroll(e: React.UIEvent<HTMLDivElement>) {
+    const next = e.currentTarget.scrollTop > 0
+    setIsScrolled((current) => (current === next ? current : next))
+  }
+
+  function getDateKeys(date: string): string[] {
+    return times.map((time) => makeCellKey(date, time))
+  }
+
+  function getDateSelectionState(date: string): DateSelectionState {
+    const keys = getDateKeys(date)
+    const selectedCount = keys.filter((key) => value.has(key)).length
+    if (selectedCount === 0) return "none"
+    if (selectedCount === keys.length) return "all"
+    return "partial"
+  }
+
+  function toggleDate(date: string) {
+    const keys = getDateKeys(date)
+    const allSelected = keys.every((key) => liveSelectedRef.current.has(key))
+    const next = new Set(liveSelectedRef.current)
+    for (const key of keys) {
+      if (allSelected) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+    }
+    liveSelectedRef.current = next
+    onChange(next)
+  }
+
   // Calendar-style: 64px time label column + N date columns.
   const gridStyle = {
     gridTemplateColumns: `64px repeat(${dates.length}, minmax(64px, 1fr))`,
@@ -119,6 +153,7 @@ export function AvailabilityGrid({ meeting, value, onChange }: AvailabilityGridP
     <div
       data-testid="availability-grid"
       className="max-h-[520px] overflow-auto rounded-xl border border-border bg-card p-2"
+      onScroll={handleScroll}
       onTouchMove={handleTouchMove}
     >
       <div
@@ -128,15 +163,44 @@ export function AvailabilityGrid({ meeting, value, onChange }: AvailabilityGridP
         aria-label="가용 시간 그리드"
       >
         {/* Header row: empty top-left corner + date labels (sticky top) */}
-        <div className="sticky left-0 top-0 z-20 bg-card" />
-        {dates.map((date) => (
-          <div
-            key={`th-${date}`}
-            className="sticky top-0 z-10 bg-card px-1 py-2 text-center text-[11px] font-semibold text-foreground"
-          >
-            {formatDateLabel(date)}
-          </div>
-        ))}
+        <div className="sticky left-0 top-0 z-40 bg-card" />
+        {dates.map((date) => {
+          const state = getDateSelectionState(date)
+          return (
+            <button
+              key={`th-${date}`}
+              type="button"
+              data-testid={`date-toggle-${date}`}
+              aria-pressed={state === "partial" ? "mixed" : state === "all"}
+              aria-label={`${formatDateLabel(date)} 전체 시간대 토글`}
+              onClick={() => toggleDate(date)}
+              style={
+                state === "all"
+                  ? {
+                      backgroundColor: "color-mix(in srgb, var(--primary) 24%, var(--card))",
+                      borderColor: "var(--primary)",
+                    }
+                  : state === "partial"
+                    ? {
+                        backgroundColor: "color-mix(in srgb, var(--primary) 14%, var(--card))",
+                        borderColor: "color-mix(in srgb, var(--primary) 72%, var(--border))",
+                      }
+                    : undefined
+              }
+              className={cn(
+                "sticky top-0 z-30 rounded-md border bg-card px-1 py-2 text-center text-[11px] font-semibold text-foreground transition-shadow transition-colors focus:outline-none focus:ring-2 focus:ring-ring/50",
+                isScrolled && "shadow-[0_2px_8px_rgba(0,0,0,0.16)]",
+                state === "all"
+                  ? ""
+                  : state === "partial"
+                    ? "border-dashed"
+                    : "border-border hover:border-primary/30",
+              )}
+            >
+              {formatDateLabel(date)}
+            </button>
+          )
+        })}
 
         {/* Body rows: time label (sticky left) + cells per date */}
         {times.map((time) => (

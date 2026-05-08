@@ -237,6 +237,25 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
     // Mode toggle defaults to timeline; switch to chip grid for deterministic flow.
     await p.locator('[data-testid="mode-toggle-grid"]').click()
     await expect(p.locator('[data-testid="availability-grid"]')).toBeVisible({ timeout: 10_000 })
+
+    const firstDateToggle = p.locator(`[data-testid="date-toggle-${startDate}"]`)
+    await firstDateToggle.click()
+    await expect(firstDateToggle).toHaveAttribute("aria-pressed", "true")
+    await expect(p.locator(`[data-slot-key="${startDate}|09:00"]`)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await expect(p.locator(`[data-slot-key="${startDate}|21:30"]`)).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    )
+    await firstDateToggle.click()
+    await expect(firstDateToggle).toHaveAttribute("aria-pressed", "false")
+    await expect(p.locator(`[data-slot-key="${startDate}|09:00"]`)).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    )
+
     await p.getByRole("button", { name: "전체 가능" }).click()
     for (const key of opts.deselectKeys ?? []) {
       await p.locator(`[data-slot-key="${key}"]`).click()
