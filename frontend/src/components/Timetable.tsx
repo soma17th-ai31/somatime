@@ -197,7 +197,7 @@ export function Timetable({
   return (
     <div className="space-y-3">
       <div
-        className="max-h-[520px] overflow-auto rounded-xl border border-border bg-card p-2"
+        className="max-h-[520px] touch-pan-y overflow-auto overscroll-contain rounded-xl border border-border bg-card p-2"
         data-testid="timetable-horizontal"
       >
         <div
