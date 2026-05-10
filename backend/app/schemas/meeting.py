@@ -41,7 +41,7 @@ _ALLOWED_BUFFER_MINUTES = {0, 30, 60, 90, 120}
 class MeetingCreate(BaseModel):
     """Body of POST /api/meetings (v3)."""
 
-    title: str = Field(min_length=1, max_length=200)
+    title: str = Field(default="", max_length=200)
     date_mode: DateMode = DateMode.range
     date_range_start: Optional[date] = None
     date_range_end: Optional[date] = None
