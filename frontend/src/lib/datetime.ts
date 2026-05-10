@@ -37,6 +37,12 @@ export function formatKstDate(iso: string): string {
   return KST_DATE_FORMATTER.format(new Date(iso))
 }
 
+// Returns the KST calendar date of an ISO timestamp as "YYYY-MM-DD".
+// Suitable as input to availabilityCells.formatDateLabel.
+export function kstDateKey(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-CA", { timeZone: "Asia/Seoul" })
+}
+
 export function formatKstTime(iso: string): string {
   return KST_TIME_FORMATTER.format(new Date(iso))
 }

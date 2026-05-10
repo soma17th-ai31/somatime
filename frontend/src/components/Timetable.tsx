@@ -8,7 +8,7 @@
 
 import { useMemo } from "react"
 import type { TimetableSlot } from "@/lib/types"
-import { formatKstDate, formatKstTime } from "@/lib/datetime"
+import { formatKstTime, kstDateKey } from "@/lib/datetime"
 import { formatDateLabel, isOnHour } from "@/lib/availabilityCells"
 import { cn } from "@/lib/cn"
 
@@ -116,7 +116,7 @@ export function Timetable({ slots, participantCount }: TimetableProps) {
     const timeSet = new Set<string>()
     const lookup = new Map<string, TimetableSlot>()
     for (const slot of slots) {
-      const date = formatKstDate(slot.start)
+      const date = kstDateKey(slot.start)
       const time = formatKstTime(slot.start)
       dateSet.add(date)
       timeSet.add(time)
