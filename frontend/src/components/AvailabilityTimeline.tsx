@@ -237,7 +237,7 @@ export function AvailabilityTimeline({ meeting, value, onChange }: AvailabilityT
 
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               {/* Hour tick labels above the bar */}
-              <div className="relative h-4 select-none text-[10px] tabular-nums text-muted-foreground/70">
+              <div className="relative h-4 select-none text-xs tabular-nums text-muted-foreground/70 sm:text-[10px]">
                 {hourTicks.map((tickMin) => {
                   const left = minToPercent(tickMin)
                   const hour = Math.floor(tickMin / 60)
@@ -332,6 +332,23 @@ export function AvailabilityTimeline({ meeting, value, onChange }: AvailabilityT
                     }}
                   />
                 ) : null}
+
+                {/* #30 — drag 중 끝 위치 시각 floating tooltip */}
+                {isDragging ? (() => {
+                  const snappedEnd = Math.min(
+                    endMin,
+                    Math.max(startMin, snapMinutes(previewHi)),
+                  )
+                  return (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute -top-7 z-10 -translate-x-1/2 whitespace-nowrap rounded bg-foreground px-2 py-0.5 text-xs text-background"
+                      style={{ left: `${minToPercent(snappedEnd)}%` }}
+                    >
+                      {minutesToTime(snappedEnd)}
+                    </span>
+                  )
+                })() : null}
               </div>
             </div>
           </div>

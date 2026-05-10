@@ -29,6 +29,7 @@ type InputMode = "timeline" | "grid"
 const MODE_STORAGE_KEY = "somameet_manual_mode"
 const DEFAULT_MODE: InputMode = "timeline"
 
+// #30 — 사용자 선택값 우선, 없으면 pointer-coarse(모바일/터치) 면 grid, 그 외 timeline.
 function readInitialMode(): InputMode {
   if (typeof window === "undefined") return DEFAULT_MODE
   try {
@@ -36,6 +37,11 @@ function readInitialMode(): InputMode {
     if (stored === "timeline" || stored === "grid") return stored
   } catch {
     // Storage access can throw in private mode; fall through to default.
+  }
+  try {
+    if (window.matchMedia?.("(pointer: coarse)").matches) return "grid"
+  } catch {
+    // matchMedia 미지원 환경 fallback.
   }
   return DEFAULT_MODE
 }
