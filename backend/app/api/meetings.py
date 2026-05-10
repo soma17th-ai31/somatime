@@ -1,10 +1,11 @@
 """Meeting CRUD + calculate + confirm endpoints (v3).
 
 Endpoints:
-- POST /api/meetings           — create meeting (range or picked mode)
-- GET  /api/meetings/{slug}    — public detail with submitted/target progress
-- POST /api/meetings/{slug}/calculate — deterministic candidates only (NO LLM call)
-- POST /api/meetings/{slug}/confirm   — slug-only, stores share_message_draft
+- POST   /api/meetings           — create meeting (range or picked mode)
+- GET    /api/meetings/{slug}    — public detail with submitted/target progress
+- POST   /api/meetings/{slug}/calculate — deterministic candidates only (NO LLM call)
+- POST   /api/meetings/{slug}/confirm   — slug-only, stores share_message_draft
+- DELETE /api/meetings/{slug}/confirm   — issue #24, cancel a confirmation
 
 v3 changes:
 - /calculate is deterministic-only (LLM moved to /recommend).
@@ -359,6 +360,69 @@ def confirm(
         ),
         share_message_draft=payload.share_message_draft,
     )
+
+
+@router.delete("/meetings/{slug}/confirm", response_model=MeetingDetail)
+def cancel_confirm(
+    request: Request,
+    meeting: Meeting = Depends(get_current_meeting),
+    db: Session = Depends(get_db),
+) -> MeetingDetail:
+    """v3.27 (issue #24) — undo a confirmation.
+
+    Path B: anyone with the slug may cancel. Resets confirmed_slot_start /
+    confirmed_slot_end / confirmed_share_message back to NULL. Once cleared,
+    PATCH /settings is editable again and POST /confirm becomes valid again.
+
+    Behavior:
+    - Confirmed slot already in the past → 409 cannot_cancel_after_meeting_start
+      (회의가 이미 시작된 뒤에는 되돌릴 수 없음).
+    - Not currently confirmed → idempotent 200 + current MeetingDetail.
+    - Confirmed and slot is still in the future → reset the 3 fields, 200 +
+      MeetingDetail.
+
+    Race protection mirrors POST /confirm (with_for_update on non-SQLite).
+    """
+    locked = (
+        db.query(Meeting).filter(Meeting.id == meeting.id).with_for_update().first()
+        if db.bind and db.bind.dialect.name != "sqlite"
+        else db.query(Meeting).filter(Meeting.id == meeting.id).first()
+    )
+    if locked is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error_code": "meeting_not_found",
+                "message": "회의를 찾을 수 없습니다.",
+                "suggestion": "URL을 다시 확인해주세요.",
+            },
+        )
+
+    if locked.confirmed_slot_start is None:
+        return get_meeting(request=request, meeting=locked, db=db)
+
+    if locked.confirmed_slot_start <= now_kst_naive():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error_code": "cannot_cancel_after_meeting_start",
+                "message": "이미 시작된 회의는 취소할 수 없습니다.",
+                "suggestion": "회의 시작 전에만 확정을 취소할 수 있습니다.",
+                "confirmed_slot": {
+                    "start": from_kst_naive(locked.confirmed_slot_start).isoformat(),
+                    "end": from_kst_naive(locked.confirmed_slot_end).isoformat(),
+                },
+            },
+        )
+
+    locked.confirmed_slot_start = None
+    locked.confirmed_slot_end = None
+    locked.confirmed_share_message = None
+    db.add(locked)
+    db.commit()
+    db.refresh(locked)
+
+    return get_meeting(request=request, meeting=locked, db=db)
 
 
 # ============================================================================

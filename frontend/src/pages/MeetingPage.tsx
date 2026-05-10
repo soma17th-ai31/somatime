@@ -19,6 +19,7 @@ import { CurrentParticipantCard } from "./meeting/CurrentParticipantCard"
 import { AvailabilitySection } from "./meeting/AvailabilitySection"
 import { TimetableSection } from "./meeting/TimetableSection"
 import { ShareMessageDialog } from "@/components/ShareMessageDialog"
+import { useToast } from "@/components/ui/toast"
 import { formatKstRange } from "@/lib/datetime"
 import { cn } from "@/lib/cn"
 
@@ -56,6 +57,7 @@ function writeParticipantNickname(slug: string, nickname: string) {
 
 export default function MeetingPage() {
   const { slug } = useParams<{ slug: string }>()
+  const { toast } = useToast()
 
   const [meeting, setMeeting] = useState<MeetingDetail | null>(null)
   const [loading, setLoading] = useState(true)
@@ -155,6 +157,22 @@ export default function MeetingPage() {
     [reloadMeeting],
   )
 
+  // #24 — 확정 취소. 성공 시 reload + refreshKey 증가 + readOnly 다이얼로그 닫기 + 토스트.
+  const handleCancelConfirm = useCallback(async () => {
+    if (!slug) return
+    try {
+      const updated = await api.cancelConfirm(slug)
+      setMeeting(updated)
+      setRefreshKey((k) => k + 1)
+      setConfirmedDialog((prev) => ({ ...prev, open: false }))
+      toast("회의 확정이 취소되었습니다.", "success")
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "확정 취소에 실패했습니다."
+      toast(msg, "error")
+      throw err
+    }
+  }, [slug, toast])
+
   // v3.2 (Path B): no organizer/participant split anywhere. The
   // ShareMessageDialog 2-step gate is the only accident safeguard now.
 
@@ -243,6 +261,7 @@ export default function MeetingPage() {
           void reloadMeeting()
           setRefreshKey((k) => k + 1)
         }}
+        onCancelConfirm={handleCancelConfirm}
       />
 
       {participantNickname ? null : <JoinSection slug={slug} onJoined={onJoined} />}
