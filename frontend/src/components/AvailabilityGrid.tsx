@@ -26,6 +26,7 @@ export function AvailabilityGrid({ meeting, value, onChange }: AvailabilityGridP
   const dates = getMeetingDates(meeting)
   const times = getMeetingTimes(meeting)
 
+  const containerRef = useRef<HTMLDivElement>(null)
   const paintModeRef = useRef<PaintMode>(null)
   const touchedRef = useRef<Set<string>>(new Set())
   const liveSelectedRef = useRef<Set<string>>(value)
@@ -46,6 +47,20 @@ export function AvailabilityGrid({ meeting, value, onChange }: AvailabilityGridP
       window.removeEventListener("touchend", endPaint)
       window.removeEventListener("touchcancel", endPaint)
       document.body.style.userSelect = ""
+    }
+  }, [])
+
+  // #29/#31 — paint 중에만 vertical pan 차단. React 의 onTouchMove 는 root 에 passive 로
+  // 등록되어 preventDefault() 가 무시되므로 native non-passive listener 로 직접 등록.
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    const onTouchMove = (e: TouchEvent) => {
+      if (paintModeRef.current) e.preventDefault()
+    }
+    el.addEventListener("touchmove", onTouchMove, { passive: false })
+    return () => {
+      el.removeEventListener("touchmove", onTouchMove)
     }
   }, [])
 
@@ -151,8 +166,9 @@ export function AvailabilityGrid({ meeting, value, onChange }: AvailabilityGridP
 
   return (
     <div
+      ref={containerRef}
       data-testid="availability-grid"
-      className="max-h-[520px] overflow-auto rounded-xl border border-border bg-card p-2"
+      className="max-h-[520px] touch-pan-y overflow-auto overscroll-contain rounded-xl border border-border bg-card p-2"
       onScroll={handleScroll}
       onTouchMove={handleTouchMove}
     >
@@ -256,7 +272,7 @@ function TimeRow({ time, dates, value, onMouseDown, onMouseEnter, onTouchStart }
             onMouseEnter={() => onMouseEnter(key)}
             onTouchStart={(e) => onTouchStart(e, key)}
             className={cn(
-              "h-6 cursor-pointer rounded-sm transition-colors",
+              "h-6 cursor-pointer touch-none rounded-sm transition-colors",
               selected
                 ? "bg-primary shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)] hover:bg-primary/85"
                 : "border border-border bg-background hover:bg-primary/15",
