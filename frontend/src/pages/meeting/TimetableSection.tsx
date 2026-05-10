@@ -234,6 +234,7 @@ export function TimetableSection({
           <Timetable
             slots={timetable?.slots ?? []}
             participantCount={Math.max(submitted, 1)}
+            submittedNicknames={meeting.submitted_nicknames ?? []}
           />
         </section>
 
