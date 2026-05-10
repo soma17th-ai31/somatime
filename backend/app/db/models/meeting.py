@@ -41,7 +41,9 @@ class Meeting(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     slug: Mapped[str] = mapped_column(String(8), unique=True, nullable=False, index=True)
 
-    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    title: Mapped[str] = mapped_column(
+        String(200), nullable=False, server_default="", default=""
+    )
 
     # v3 — date_mode + nullable range + picked dates list (Q5).
     date_mode: Mapped[str] = mapped_column(
