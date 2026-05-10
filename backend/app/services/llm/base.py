@@ -107,10 +107,10 @@ def render_template_share_message(meeting: Meeting, candidate) -> str:
 
     Privacy: derives only from meeting.title and the candidate's slot times.
 
-    Format (issue #26):
-    - 1st line: ``<title> 일정 안내드립니다.`` — title not quoted.
-      Empty/whitespace-only title drops the prefix entirely
-      (``일정 안내드립니다.``).
+    Format (issue #26 + bracket-title follow-up):
+    - 1st line: ``[<title>] 일정 안내드립니다.`` — title wrapped in square
+      brackets. Empty/whitespace-only title drops the prefix and brackets
+      entirely (``일정 안내드립니다.``).
     - blank line separating header from body.
     - ``날짜:`` line — single date ``M/D (요일)`` when start/end are on the
       same date, or ``M/D (요일) - M/D (요일)`` when the slot crosses midnight.
@@ -137,7 +137,7 @@ def render_template_share_message(meeting: Meeting, candidate) -> str:
     time_line = f"시간: {start.strftime('%H:%M')} - {end.strftime('%H:%M')}"
 
     title = (meeting.title or "").strip()
-    header = f"{title} 일정 안내드립니다." if title else "일정 안내드립니다."
+    header = f"[{title}] 일정 안내드립니다." if title else "일정 안내드립니다."
 
     return (
         f"{header}\n"

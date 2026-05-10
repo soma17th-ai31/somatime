@@ -90,13 +90,13 @@ def test_recommend_returns_summary_and_candidates() -> None:
 
 
 def test_recommend_share_message_full_format_same_day() -> None:
-    """issue #26 — full 5-line format: header / blank / 날짜 / 시간 / 장소."""
+    """issue #26 + bracket-title — full 5-line format with [title] header."""
     adapter = TemplateAdapter()
     m = _meeting()
     out = adapter.recommend(_windows()[:1], m, max_candidates=1)
     msg = out["candidates"][0]["share_message_draft"]
     expected = (
-        "팀 회의 일정 안내드립니다.\n"
+        "[팀 회의] 일정 안내드립니다.\n"
         "\n"
         "날짜: 5/12 (화)\n"
         "시간: 14:00 - 15:00\n"
@@ -107,6 +107,19 @@ def test_recommend_share_message_full_format_same_day() -> None:
     assert "'팀 회의'" not in msg
     # Old joined line must be gone.
     assert "일시:" not in msg
+
+
+def test_share_message_title_wrapped_in_brackets() -> None:
+    """bracket-title — non-empty title is wrapped in [] on the header line."""
+    from app.services.llm.base import render_template_share_message
+
+    m = _meeting()
+    msg = render_template_share_message(m, _windows()[0])
+    # First line must start with [<title>] and end with the standard suffix.
+    first_line = msg.split("\n", 1)[0]
+    assert first_line == "[팀 회의] 일정 안내드립니다."
+    # Bare title (without brackets) followed by 일정 must NOT appear at line start.
+    assert not msg.startswith("팀 회의 일정")
 
 
 def test_share_message_empty_title_drops_prefix_and_no_quotes() -> None:
@@ -145,7 +158,7 @@ def test_share_message_blank_line_between_header_and_body() -> None:
     m = _meeting()
     msg = render_template_share_message(m, _windows()[0])
     lines = msg.split("\n")
-    assert lines[0] == "팀 회의 일정 안내드립니다."
+    assert lines[0] == "[팀 회의] 일정 안내드립니다."
     assert lines[1] == ""
     assert lines[2].startswith("날짜: ")
     assert lines[3].startswith("시간: ")
@@ -187,7 +200,7 @@ def test_share_message_midnight_boundary_expands_date_line() -> None:
     )
     msg = render_template_share_message(m, win)
     expected = (
-        "야간 일정 안내드립니다.\n"
+        "[야간] 일정 안내드립니다.\n"
         "\n"
         "날짜: 5/12 (화) - 5/13 (수)\n"
         "시간: 23:30 - 00:30\n"
