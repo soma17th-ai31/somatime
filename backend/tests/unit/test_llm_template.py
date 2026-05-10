@@ -89,13 +89,111 @@ def test_recommend_returns_summary_and_candidates() -> None:
         assert cand["share_message_draft"]
 
 
-def test_recommend_share_message_contains_title_and_time() -> None:
+def test_recommend_share_message_full_format_same_day() -> None:
+    """issue #26 — full 5-line format: header / blank / 날짜 / 시간 / 장소."""
     adapter = TemplateAdapter()
     m = _meeting()
     out = adapter.recommend(_windows()[:1], m, max_candidates=1)
     msg = out["candidates"][0]["share_message_draft"]
-    assert "팀 회의" in msg
-    assert "2026-05-12" in msg
+    expected = (
+        "팀 회의 일정 안내드립니다.\n"
+        "\n"
+        "날짜: 5/12 (화)\n"
+        "시간: 14:00 - 15:00\n"
+        "장소: 온라인"
+    )
+    assert msg == expected
+    # No single-quotes around title.
+    assert "'팀 회의'" not in msg
+    # Old joined line must be gone.
+    assert "일시:" not in msg
+
+
+def test_share_message_empty_title_drops_prefix_and_no_quotes() -> None:
+    """issue #26 — empty title produces a clean header with no stray quotes."""
+    adapter = TemplateAdapter()
+    m = _meeting()
+    m.title = ""
+    out = adapter.recommend(_windows()[:1], m, max_candidates=1)
+    msg = out["candidates"][0]["share_message_draft"]
+    expected = (
+        "일정 안내드립니다.\n"
+        "\n"
+        "날짜: 5/12 (화)\n"
+        "시간: 14:00 - 15:00\n"
+        "장소: 온라인"
+    )
+    assert msg == expected
+    assert "''" not in msg
+    assert "' '" not in msg
+
+
+def test_share_message_whitespace_only_title_treated_as_empty() -> None:
+    """Whitespace-only title is stripped and treated as empty."""
+    from app.services.llm.base import render_template_share_message
+
+    m = _meeting()
+    m.title = "   "
+    msg = render_template_share_message(m, _windows()[0])
+    assert msg.startswith("일정 안내드립니다.\n\n")
+
+
+def test_share_message_blank_line_between_header_and_body() -> None:
+    """issue #26 — first line followed by a blank line then 날짜:."""
+    from app.services.llm.base import render_template_share_message
+
+    m = _meeting()
+    msg = render_template_share_message(m, _windows()[0])
+    lines = msg.split("\n")
+    assert lines[0] == "팀 회의 일정 안내드립니다."
+    assert lines[1] == ""
+    assert lines[2].startswith("날짜: ")
+    assert lines[3].startswith("시간: ")
+    assert lines[4].startswith("장소: ")
+
+
+def test_share_message_single_digit_month_day_no_padding() -> None:
+    """issue #26 — 1/3 not 01/03."""
+    from app.services.llm.base import render_template_share_message
+
+    m = _meeting()
+    win = CandidateWindow(
+        start=datetime(2026, 1, 3, 9),
+        end=datetime(2026, 1, 3, 10),
+        available_count=1,
+        is_full_match=True,
+        available_nicknames=["a"],
+        missing_participants=[],
+    )
+    msg = render_template_share_message(m, win)
+    assert "날짜: 1/3 (토)" in msg
+    assert "시간: 09:00 - 10:00" in msg
+    assert "01/03" not in msg
+
+
+def test_share_message_midnight_boundary_expands_date_line() -> None:
+    """issue #26 — when start/end days differ, 날짜 line lists both dates."""
+    from app.services.llm.base import render_template_share_message
+
+    m = _meeting()
+    m.title = "야간"
+    win = CandidateWindow(
+        start=datetime(2026, 5, 12, 23, 30),
+        end=datetime(2026, 5, 13, 0, 30),
+        available_count=1,
+        is_full_match=True,
+        available_nicknames=["a"],
+        missing_participants=[],
+    )
+    msg = render_template_share_message(m, win)
+    expected = (
+        "야간 일정 안내드립니다.\n"
+        "\n"
+        "날짜: 5/12 (화) - 5/13 (수)\n"
+        "시간: 23:30 - 00:30\n"
+        "장소: 온라인"
+    )
+    assert msg == expected
 
 
 def test_template_output_does_not_leak_private_event_words() -> None:
