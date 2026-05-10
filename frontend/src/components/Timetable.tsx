@@ -298,6 +298,18 @@ function CellBlock({
   const isMissing = run.count < 0
   const isEmpty = run.count === 0
 
+  // #25 follow-up — anchor Popover 를 마우스 진입 좌표로. mouseMove 추적은 안 함
+  // (진입 시점 기록 후 popover 열려있는 동안엔 고정).
+  const [anchorOffset, setAnchorOffset] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  })
+
+  function recordAnchor(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect()
+    setAnchorOffset({ x: e.clientX - rect.left, y: e.clientY - rect.top })
+  }
+
   if (isMissing) {
     return (
       <div
@@ -314,32 +326,23 @@ function CellBlock({
   const startLabel = run.startSlot ? formatKstTime(run.startSlot.start) : ""
   const endLabel = run.endSlot ? formatKstTime(run.endSlot.end) : ""
 
-  const cellContent = (
-    <div
-      role="gridcell"
-      aria-label={`${startLabel} 가능 ${run.count}명`}
-      style={{
-        gridColumn: dateColIdx + 2,
-        gridRow: `${run.startIdx + 2} / span ${run.length}`,
-        ...(isEmpty ? {} : intensityStyle(run.count, participantCount)),
-      }}
-      className={cn(
-        "flex items-center justify-center rounded-sm text-[10px] leading-none tabular-nums",
-        isEmpty
-          ? "border border-border bg-background"
-          : "cursor-pointer",
-        intensityTextClass(run.count),
-      )}
-      onMouseEnter={isEmpty ? undefined : () => onHoverOpen(cellId)}
-      onMouseLeave={isEmpty ? undefined : () => onHoverClose(cellId)}
-      onClick={isEmpty ? undefined : () => onClickToggle(cellId)}
-    >
-      {isEmpty ? "" : run.count}
-    </div>
-  )
-
   // Empty cells (count=0) 는 Popover 비활성화: hover/click 무반응.
-  if (isEmpty) return cellContent
+  if (isEmpty) {
+    return (
+      <div
+        role="gridcell"
+        aria-label={`${startLabel} 가능 0명`}
+        style={{
+          gridColumn: dateColIdx + 2,
+          gridRow: `${run.startIdx + 2} / span ${run.length}`,
+        }}
+        className={cn(
+          "flex items-center justify-center rounded-sm border border-border bg-background text-[10px] leading-none tabular-nums",
+          intensityTextClass(0),
+        )}
+      />
+    )
+  }
 
   // 미응답자 = submittedNicknames - run.nicknames.
   const missingNicknames =
@@ -350,7 +353,42 @@ function CellBlock({
 
   return (
     <Popover open={isOpen} onOpenChange={(o) => onOpenChange(cellId, o)}>
-      <PopoverAnchor asChild>{cellContent}</PopoverAnchor>
+      <div
+        role="gridcell"
+        aria-label={`${startLabel} 가능 ${run.count}명`}
+        style={{
+          gridColumn: dateColIdx + 2,
+          gridRow: `${run.startIdx + 2} / span ${run.length}`,
+          ...intensityStyle(run.count, participantCount),
+        }}
+        className={cn(
+          "relative flex cursor-pointer items-center justify-center rounded-sm text-[10px] leading-none tabular-nums",
+          intensityTextClass(run.count),
+        )}
+        onMouseEnter={(e) => {
+          recordAnchor(e)
+          onHoverOpen(cellId)
+        }}
+        onMouseLeave={() => onHoverClose(cellId)}
+        onClick={(e) => {
+          recordAnchor(e)
+          onClickToggle(cellId)
+        }}
+      >
+        <PopoverAnchor asChild>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute"
+            style={{
+              left: anchorOffset.x,
+              top: anchorOffset.y,
+              width: 1,
+              height: 1,
+            }}
+          />
+        </PopoverAnchor>
+        {run.count}
+      </div>
       <PopoverContent
         side="right"
         align="start"
