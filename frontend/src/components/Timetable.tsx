@@ -352,8 +352,10 @@ function CellBlock({
     <Popover open={isOpen} onOpenChange={(o) => onOpenChange(cellId, o)}>
       <PopoverAnchor asChild>{cellContent}</PopoverAnchor>
       <PopoverContent
-        side="top"
-        align="center"
+        side="right"
+        align="start"
+        sideOffset={8}
+        collisionPadding={16}
         className="w-64 p-3 text-xs"
         data-testid={`timetable-cell-popover-${cellId}`}
         // 외부 클릭 시 닫혀야 하므로 Radix 의 기본 onInteractOutside 사용.
