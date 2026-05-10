@@ -12,6 +12,7 @@ import { useState } from "react"
 import { Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog"
 import { CopyableUrl } from "@/components/CopyableUrl"
 import type { MeetingDetail } from "@/lib/types"
 import { formatKstRange } from "@/lib/datetime"
@@ -28,6 +29,8 @@ interface Props {
   slug: string
   meeting: MeetingDetail
   onSettingsSaved: () => void
+  // #24 — 확정 취소 액션. 부모에서 cancelConfirm + reload + refreshKey + dialog close + toast 처리.
+  onCancelConfirm?: () => Promise<void>
 }
 
 function formatDateScope(meeting: MeetingDetail): string {
@@ -40,11 +43,39 @@ function formatDateScope(meeting: MeetingDetail): string {
   return `${dates.join(", ")} (개별 ${dates.length}일)`
 }
 
-export function MeetingSummary({ slug, meeting, onSettingsSaved }: Props) {
+export function MeetingSummary({
+  slug,
+  meeting,
+  onSettingsSaved,
+  onCancelConfirm,
+}: Props) {
   const submitted = meeting.submitted_count ?? 0
   const ready = meeting.is_ready_to_calculate ?? submitted >= 1
   const [editing, setEditing] = useState(false)
   const isLocked = Boolean(meeting.confirmed_slot)
+
+  // #24 — 확정 취소 다이얼로그 상태.
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
+  const [cancelBusy, setCancelBusy] = useState(false)
+
+  // 회의 시작 시각이 이미 지났으면 취소 비활성화. BE 도 409 로 막지만 미리 차단해 UX 개선.
+  const startInPast = Boolean(
+    meeting.confirmed_slot && new Date(meeting.confirmed_slot.start).getTime() <= Date.now(),
+  )
+
+  async function handleCancelConfirm() {
+    if (!onCancelConfirm) return
+    setCancelBusy(true)
+    try {
+      await onCancelConfirm()
+      setCancelDialogOpen(false)
+    } catch {
+      // 부모(MeetingPage)에서 토스트로 사용자에게 알리고 throw 함. 여기선 다이얼로그를
+      // 열어두기만 하고 unhandled rejection 만 막는다.
+    } finally {
+      setCancelBusy(false)
+    }
+  }
 
   return (
     <Card data-testid="meeting-summary" className="surface-edge">
@@ -173,10 +204,33 @@ export function MeetingSummary({ slug, meeting, onSettingsSaved }: Props) {
 
           {meeting.confirmed_slot ? (
             <div className="sm:col-span-2 rounded-md border border-primary/30 bg-primary/10 p-3 text-primary">
-              <dt className="text-xs font-semibold uppercase tracking-wide">확정된 시각</dt>
-              <dd className="mt-1 font-medium">
-                {formatKstRange(meeting.confirmed_slot.start, meeting.confirmed_slot.end)}
-              </dd>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <dt className="text-xs font-semibold uppercase tracking-wide">확정된 시각</dt>
+                  <dd className="mt-1 font-medium">
+                    {formatKstRange(meeting.confirmed_slot.start, meeting.confirmed_slot.end)}
+                  </dd>
+                </div>
+                {onCancelConfirm ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCancelDialogOpen(true)}
+                    disabled={startInPast}
+                    aria-label="회의 확정 취소"
+                    data-testid="cancel-confirm"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  >
+                    확정 취소
+                  </Button>
+                ) : null}
+              </div>
+              {startInPast ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  회의 시작 시각이 지나 취소할 수 없습니다.
+                </p>
+              ) : null}
               {meeting.confirmed_share_message ? (
                 <dd className="mt-2 whitespace-pre-wrap rounded bg-background/80 p-2 text-xs text-foreground">
                   {meeting.confirmed_share_message}
@@ -193,6 +247,55 @@ export function MeetingSummary({ slug, meeting, onSettingsSaved }: Props) {
         meeting={meeting}
         onSaved={onSettingsSaved}
       />
+      {meeting.confirmed_slot ? (
+        <Dialog
+          open={cancelDialogOpen}
+          onOpenChange={(open) => {
+            if (!cancelBusy) setCancelDialogOpen(open)
+          }}
+          labelledBy="cancel-confirm-title"
+        >
+          <div data-testid="cancel-confirm-dialog">
+            <DialogTitle id="cancel-confirm-title">회의 확정 취소</DialogTitle>
+            <DialogDescription>이 회의의 확정을 취소합니다.</DialogDescription>
+            <div className="mt-4 space-y-2 text-sm">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  확정된 시각
+                </div>
+                <div className="mt-1 font-medium text-foreground">
+                  {formatKstRange(meeting.confirmed_slot.start, meeting.confirmed_slot.end)}
+                </div>
+              </div>
+              <p className="text-muted-foreground">
+                취소하면 후보 시간을 다시 선택해야 합니다.
+                {meeting.confirmed_share_message
+                  ? " 저장된 공유 메시지도 함께 삭제됩니다."
+                  : ""}
+              </p>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCancelDialogOpen(false)}
+                disabled={cancelBusy}
+              >
+                취소
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={handleCancelConfirm}
+                disabled={cancelBusy}
+                data-testid="cancel-confirm-submit"
+              >
+                {cancelBusy ? "취소 중..." : "확정 취소"}
+              </Button>
+            </DialogFooter>
+          </div>
+        </Dialog>
+      ) : null}
     </Card>
   )
 }

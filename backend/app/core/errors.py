@@ -41,6 +41,7 @@ KNOWN_ERROR_CODES = {
     "nickname_conflict",
     "insufficient_responses",
     "already_confirmed",
+    "cannot_cancel_after_meeting_start",
     "ics_parse_failed",
     "validation_error",
     "candidate_not_in_windows",

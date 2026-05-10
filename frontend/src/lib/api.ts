@@ -190,6 +190,14 @@ export const api = {
       body: payload,
     })
   },
+
+  // #24 — 확정 취소. Returns the updated MeetingDetail with confirmed_slot/confirmed_share_message
+  // cleared. BE may reject (409) when the meeting start is already in the past.
+  cancelConfirm(slug: string) {
+    return request<MeetingDetail>(`/api/meetings/${encodeURIComponent(slug)}/confirm`, {
+      method: "DELETE",
+    })
+  },
 }
 
 // Re-export for convenience.
