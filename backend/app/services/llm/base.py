@@ -93,23 +93,56 @@ class LLMAdapter(ABC):
         }
 
 
+_WEEKDAY_KO = ["월", "화", "수", "목", "금", "토", "일"]
+
+
+def _format_date_label(dt) -> str:
+    """``M/D (요일)`` — month/day are not zero-padded, weekday in 한글."""
+    return f"{dt.month}/{dt.day} ({_WEEKDAY_KO[dt.weekday()]})"
+
+
 def render_template_share_message(meeting: Meeting, candidate) -> str:
     """Deterministic share_message_draft used by /recommend's fallback path
     (when all 4 LLM attempts fail) and by the TemplateAdapter.
 
     Privacy: derives only from meeting.title and the candidate's slot times.
+
+    Format (issue #26):
+    - 1st line: ``<title> 일정 안내드립니다.`` — title not quoted.
+      Empty/whitespace-only title drops the prefix entirely
+      (``일정 안내드립니다.``).
+    - blank line separating header from body.
+    - ``날짜:`` line — single date ``M/D (요일)`` when start/end are on the
+      same date, or ``M/D (요일) - M/D (요일)`` when the slot crosses midnight.
+    - ``시간:`` line — ``HH:MM - HH:MM`` (24h, zero-padded, spaces around the
+      hyphen).
+    - ``장소:`` line — Korean location label.
     """
     location_label = {
         "online": "온라인",
         "offline": "오프라인",
         "any": "온라인/오프라인 상관없음",
     }.get(meeting.location_type, meeting.location_type)
+
     start = candidate.start
     end = candidate.end
-    date_part = start.strftime("%Y-%m-%d")
-    time_range = f"{start.strftime('%H:%M')}-{end.strftime('%H:%M')}"
+
+    if start.date() == end.date():
+        date_line = f"날짜: {_format_date_label(start)}"
+    else:
+        date_line = (
+            f"날짜: {_format_date_label(start)} - {_format_date_label(end)}"
+        )
+
+    time_line = f"시간: {start.strftime('%H:%M')} - {end.strftime('%H:%M')}"
+
+    title = (meeting.title or "").strip()
+    header = f"{title} 일정 안내드립니다." if title else "일정 안내드립니다."
+
     return (
-        f"'{meeting.title}' 일정 안내드립니다.\n"
-        f"일시: {date_part} {time_range}\n"
+        f"{header}\n"
+        f"\n"
+        f"{date_line}\n"
+        f"{time_line}\n"
         f"장소: {location_label}"
     )
