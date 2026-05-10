@@ -11,8 +11,16 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { useToast } from "@/components/ui/toast"
 import type { Candidate } from "@/lib/types"
-import { formatKstRange } from "@/lib/datetime"
+import { formatKstTime, kstDateKey } from "@/lib/datetime"
+import { formatDateLabel } from "@/lib/availabilityCells"
 import { cn } from "@/lib/cn"
+
+function formatCandidateRange(startIso: string, endIso: string): string {
+  const dateLabel = formatDateLabel(kstDateKey(startIso))
+  const startTime = formatKstTime(startIso)
+  const endTime = formatKstTime(endIso)
+  return `${dateLabel} ${startTime} - ${endTime}`
+}
 
 interface CandidateListProps {
   candidates: Candidate[]
@@ -72,7 +80,7 @@ export function CandidateList({
                     후보 {idx + 1}
                   </div>
                   <div className="font-display text-lg font-medium tracking-[-0.3px] text-foreground">
-                    {formatKstRange(c.start, c.end)}
+                    {formatCandidateRange(c.start, c.end)}
                   </div>
                   <div className="text-sm text-muted-foreground">
                     가능 인원 {c.available_count}명
