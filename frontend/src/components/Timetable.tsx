@@ -5,16 +5,23 @@
 //        are 1-row items. The CSS-Grid `gap-y-1` puts a 4 px gap between any
 //        two adjacent items but is consumed inside multi-row spans, so a merged
 //        run reads as one solid block with no internal gaps. No margin tricks.
+//
+// #25 — hover/click 시 styled Popover. 한 번에 하나의 셀만 열림. click 은
+//       sticky (셀 떠나도 유지), outside click / Esc / 다른 셀 클릭 → 닫힘.
 
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 import type { TimetableSlot } from "@/lib/types"
 import { formatKstTime, kstDateKey } from "@/lib/datetime"
 import { formatDateLabel, isOnHour } from "@/lib/availabilityCells"
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { cn } from "@/lib/cn"
 
 interface TimetableProps {
   slots: TimetableSlot[]
   participantCount: number
+  // #25 — 미응답자 계산용. 회의에 닉네임으로 제출한 모든 참여자 목록.
+  // (그 시간 미응답자 = submittedNicknames - run.nicknames)
+  submittedNicknames?: string[]
 }
 
 // Tailwind v3 + hex CSS-var primary doesn't compose `bg-primary/<alpha>` reliably,
@@ -110,7 +117,11 @@ function computeRuns(
   return out
 }
 
-export function Timetable({ slots, participantCount }: TimetableProps) {
+export function Timetable({
+  slots,
+  participantCount,
+  submittedNicknames,
+}: TimetableProps) {
   const { dates, times, slotByKey } = useMemo(() => {
     const dateSet = new Set<string>()
     const timeSet = new Set<string>()
@@ -131,6 +142,42 @@ export function Timetable({ slots, participantCount }: TimetableProps) {
     () => dates.map((date) => computeRuns(date, times, slotByKey)),
     [dates, times, slotByKey],
   )
+
+  // #25 — 한 번에 하나의 Popover 만 열림. sticky=click 으로 열린 상태(셀 떠나도 유지).
+  const [openCellId, setOpenCellId] = useState<string | null>(null)
+  const [stickyCellId, setStickyCellId] = useState<string | null>(null)
+
+  function openByHover(id: string) {
+    // 다른 셀이 sticky 면 hover 무시 (사용자가 명시적으로 고정해둔 패널 보호).
+    if (stickyCellId !== null && stickyCellId !== id) return
+    setOpenCellId(id)
+  }
+
+  function closeByLeave(id: string) {
+    if (stickyCellId === id) return
+    if (openCellId === id) setOpenCellId(null)
+  }
+
+  function toggleByClick(id: string) {
+    if (stickyCellId === id) {
+      // 같은 셀 다시 클릭 → 닫힘 + sticky 해제.
+      setOpenCellId(null)
+      setStickyCellId(null)
+      return
+    }
+    // 새 셀 클릭 (sticky 가 다른 셀이든 없든) → 그 셀로 sticky 옮김.
+    setOpenCellId(id)
+    setStickyCellId(id)
+  }
+
+  function handleOpenChange(id: string, open: boolean) {
+    // Radix 가 outside-click / Esc 시 false 로 호출. true 로 부르는 경로(예: 키보드)는
+    // 우리 controlled state 로 이미 동기화돼 있으므로 false 만 처리.
+    if (!open && openCellId === id) {
+      setOpenCellId(null)
+      setStickyCellId(null)
+    }
+  }
 
   if (slots.length === 0 || dates.length === 0 || times.length === 0) {
     return (
@@ -194,31 +241,60 @@ export function Timetable({ slots, participantCount }: TimetableProps) {
 
           {/* Body cells: each run is ONE grid item spanning `run.length` rows. */}
           {dates.map((date, dIdx) =>
-            datesRuns[dIdx].map((run) => (
-              <CellBlock
-                key={`${date}-${run.startIdx}`}
-                run={run}
-                dateColIdx={dIdx}
-                participantCount={participantCount}
-              />
-            )),
+            datesRuns[dIdx].map((run) => {
+              const id = `${dIdx}-${run.startIdx}`
+              return (
+                <CellBlock
+                  key={`${date}-${run.startIdx}`}
+                  cellId={id}
+                  run={run}
+                  dateColIdx={dIdx}
+                  participantCount={participantCount}
+                  submittedNicknames={submittedNicknames}
+                  isOpen={openCellId === id}
+                  onHoverOpen={openByHover}
+                  onHoverClose={closeByLeave}
+                  onClickToggle={toggleByClick}
+                  onOpenChange={handleOpenChange}
+                />
+              )
+            }),
           )}
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
-        셀의 색이 진할수록 더 많은 참여자가 가능한 시간입니다. 마우스를 올리면 닉네임이 표시됩니다.
+        셀의 색이 진할수록 더 많은 참여자가 가능한 시간입니다. 셀 위에 마우스를 올리거나 셀을 누르면
+        가능 인원이 표시됩니다.
       </p>
     </div>
   )
 }
 
 interface CellBlockProps {
+  cellId: string
   run: Run
   dateColIdx: number
   participantCount: number
+  submittedNicknames?: string[]
+  isOpen: boolean
+  onHoverOpen: (id: string) => void
+  onHoverClose: (id: string) => void
+  onClickToggle: (id: string) => void
+  onOpenChange: (id: string, open: boolean) => void
 }
 
-function CellBlock({ run, dateColIdx, participantCount }: CellBlockProps) {
+function CellBlock({
+  cellId,
+  run,
+  dateColIdx,
+  participantCount,
+  submittedNicknames,
+  isOpen,
+  onHoverOpen,
+  onHoverClose,
+  onClickToggle,
+  onOpenChange,
+}: CellBlockProps) {
   const isMissing = run.count < 0
   const isEmpty = run.count === 0
 
@@ -237,15 +313,9 @@ function CellBlock({ run, dateColIdx, participantCount }: CellBlockProps) {
 
   const startLabel = run.startSlot ? formatKstTime(run.startSlot.start) : ""
   const endLabel = run.endSlot ? formatKstTime(run.endSlot.end) : ""
-  const tooltip = isEmpty
-    ? `${startLabel} - ${endLabel}\n가능 0명`
-    : `${startLabel} - ${endLabel}\n가능 ${run.count}명${
-        run.nicknames.length > 0 ? `\n참여자: ${run.nicknames.join(", ")}` : ""
-      }`
 
-  return (
+  const cellContent = (
     <div
-      title={tooltip}
       role="gridcell"
       aria-label={`${startLabel} 가능 ${run.count}명`}
       style={{
@@ -255,11 +325,65 @@ function CellBlock({ run, dateColIdx, participantCount }: CellBlockProps) {
       }}
       className={cn(
         "flex items-center justify-center rounded-sm text-[10px] leading-none tabular-nums",
-        isEmpty ? "border border-border bg-background" : "",
+        isEmpty
+          ? "border border-border bg-background"
+          : "cursor-pointer",
         intensityTextClass(run.count),
       )}
+      onMouseEnter={isEmpty ? undefined : () => onHoverOpen(cellId)}
+      onMouseLeave={isEmpty ? undefined : () => onHoverClose(cellId)}
+      onClick={isEmpty ? undefined : () => onClickToggle(cellId)}
     >
       {isEmpty ? "" : run.count}
     </div>
+  )
+
+  // Empty cells (count=0) 는 Popover 비활성화: hover/click 무반응.
+  if (isEmpty) return cellContent
+
+  // 미응답자 = submittedNicknames - run.nicknames.
+  const missingNicknames =
+    submittedNicknames && submittedNicknames.length > 0
+      ? submittedNicknames.filter((n) => !run.nicknames.includes(n))
+      : []
+  const totalSubmitted = submittedNicknames?.length
+
+  return (
+    <Popover open={isOpen} onOpenChange={(o) => onOpenChange(cellId, o)}>
+      <PopoverAnchor asChild>{cellContent}</PopoverAnchor>
+      <PopoverContent
+        side="top"
+        align="center"
+        className="w-64 p-3 text-xs"
+        data-testid={`timetable-cell-popover-${cellId}`}
+        // 외부 클릭 시 닫혀야 하므로 Radix 의 기본 onInteractOutside 사용.
+      >
+        <div className="space-y-2">
+          <div className="font-semibold text-foreground tabular-nums">
+            {startLabel} - {endLabel}
+          </div>
+          <div className="text-muted-foreground">
+            가능 {run.count}명
+            {typeof totalSubmitted === "number" && totalSubmitted > 0
+              ? ` / 총 ${totalSubmitted}명`
+              : ""}
+          </div>
+          <div>
+            <div className="font-medium text-foreground">가능</div>
+            <div className="mt-0.5 break-words text-muted-foreground">
+              {run.nicknames.length > 0 ? run.nicknames.join(", ") : "-"}
+            </div>
+          </div>
+          {submittedNicknames && submittedNicknames.length > 0 ? (
+            <div>
+              <div className="font-medium text-foreground">미응답</div>
+              <div className="mt-0.5 break-words text-muted-foreground">
+                {missingNicknames.length > 0 ? missingNicknames.join(", ") : "-"}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
