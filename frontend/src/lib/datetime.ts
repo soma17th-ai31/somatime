@@ -65,3 +65,50 @@ export function buildKstIso(dateStr: string, timeStr: string): string {
   const safeTime = timeStr.length === 5 ? `${timeStr}:00` : timeStr
   return `${dateStr}T${safeTime}+09:00`
 }
+
+// #32 — 회의 자동 삭제 예정 안내 텍스트 생성.
+// 결과 텍스트는 KST 캘린더 기준 월/일 + 남은 시간 단위 변환을 결합한다.
+//   - 1일 이상: "5/15 자동 삭제 (3일 후)"
+//   - 1~24시간: "5/12 자동 삭제 (5시간 후)" (isUrgent=true)
+//   - 1~60분: "5/12 자동 삭제 (45분 후)" (isUrgent=true)
+//   - 0~1분: "5/12 자동 삭제 (곧)" (isUrgent=true)
+//   - 음수: "만료됨" (isUrgent=true)
+// 두 번째 인자 `now` 는 단위 테스트 편의를 위한 주입점 (default Date.now()).
+export function formatExpiryNotice(
+  expiresAt: string | Date,
+  now: Date = new Date(),
+): { text: string; isUrgent: boolean } {
+  const expiry = typeof expiresAt === "string" ? new Date(expiresAt) : expiresAt
+  if (Number.isNaN(expiry.getTime())) {
+    return { text: "", isUrgent: false }
+  }
+  const diffMs = expiry.getTime() - now.getTime()
+  if (diffMs <= 0) {
+    return { text: "만료됨", isUrgent: true }
+  }
+  // KST 캘린더 월/일 — "YYYY-MM-DD" 에서 month/day 추출.
+  const expiryIso = typeof expiresAt === "string" ? expiresAt : expiry.toISOString()
+  const [, mStr, dStr] = kstDateKey(expiryIso).split("-")
+  const monthDay = `${Number.parseInt(mStr, 10)}/${Number.parseInt(dStr, 10)}`
+
+  const diffMinutes = Math.floor(diffMs / 60_000)
+  const diffHours = Math.floor(diffMs / 3_600_000)
+  const diffDays = Math.floor(diffMs / 86_400_000)
+
+  let remaining: string
+  let isUrgent: boolean
+  if (diffDays >= 1) {
+    remaining = `${diffDays}일 후`
+    isUrgent = false
+  } else if (diffHours >= 1) {
+    remaining = `${diffHours}시간 후`
+    isUrgent = true
+  } else if (diffMinutes >= 1) {
+    remaining = `${diffMinutes}분 후`
+    isUrgent = true
+  } else {
+    remaining = "곧"
+    isUrgent = true
+  }
+  return { text: `${monthDay} 자동 삭제 (${remaining})`, isUrgent }
+}
