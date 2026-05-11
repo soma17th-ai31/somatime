@@ -9,13 +9,13 @@
 // v3.2 (Path B): organizer split removed entirely — no isOrganizer prop.
 
 import { useState } from "react"
-import { Pencil } from "lucide-react"
+import { AlertCircle, Clock, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog"
 import { CopyableUrl } from "@/components/CopyableUrl"
 import type { MeetingDetail } from "@/lib/types"
-import { formatKstRange } from "@/lib/datetime"
+import { formatExpiryNotice, formatKstRange } from "@/lib/datetime"
 import { cn } from "@/lib/cn"
 import { EditMeetingDialog } from "./EditMeetingDialog"
 
@@ -83,6 +83,23 @@ export function MeetingSummary({
         <div>
           <CardTitle>{meeting.title}</CardTitle>
           <CardDescription>모든 시간은 KST 기준입니다.</CardDescription>
+          {meeting.expires_at ? (() => {
+            const { text, isUrgent } = formatExpiryNotice(meeting.expires_at)
+            if (!text) return null
+            const Icon = isUrgent ? AlertCircle : Clock
+            return (
+              <p
+                className={cn(
+                  "mt-1 inline-flex items-center gap-1 text-xs",
+                  isUrgent ? "text-destructive" : "text-muted-foreground",
+                )}
+                data-testid="expiry-notice"
+              >
+                <Icon className="h-3 w-3" aria-hidden="true" />
+                <span>{text}</span>
+              </p>
+            )
+          })() : null}
         </div>
         {!isLocked ? (
           <Button

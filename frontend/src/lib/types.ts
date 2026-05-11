@@ -74,6 +74,8 @@ export interface MeetingDetail {
   confirmed_slot: ConfirmedSlot | null
   confirmed_share_message: string | null
   created_at?: string
+  // #32 — 회의 자동 삭제 예정 시각 (ISO 8601 with KST offset). 미지원 응답에선 omit.
+  expires_at?: string
 }
 
 export interface BusyBlock {
