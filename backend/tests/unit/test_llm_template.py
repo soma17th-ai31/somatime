@@ -19,8 +19,6 @@ def _meeting() -> Meeting:
         candidate_dates=None,
         duration_minutes=60,
         location_type="online",
-        time_window_start=time(9, 0),
-        time_window_end=time(22, 0),
         include_weekends=False,
         created_at=datetime(2026, 5, 4),
     )

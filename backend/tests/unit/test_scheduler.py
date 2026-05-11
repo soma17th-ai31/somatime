@@ -27,14 +27,18 @@ def _make_meeting(
     include_weekends: bool = False,
     start_date: date = date(2026, 5, 11),
     end_date: date = date(2026, 5, 15),
-    window_start: time = time(9, 0),
-    window_end: time = time(22, 0),
+    window_start: time = time(9, 0),  # noqa: ARG001 — kept for call-site compat
+    window_end: time = time(22, 0),  # noqa: ARG001 — kept for call-site compat
     participant_count: int = 3,  # noqa: ARG001 — accepted for back-compat
 ) -> Meeting:
     # v3.1: participant_count was removed from Meeting; the scheduler does
     # not depend on it. Leave the kwarg in the helper signature so older
     # call sites keep compiling.
-    del participant_count
+    # #57: meeting-level time_window_start/end columns were dropped in
+    # favour of a process-wide MEETING_WINDOW_START / MEETING_WINDOW_END
+    # constant (06:00-24:00). The window_* kwargs are kept as call-site
+    # compat only — they are discarded here.
+    del participant_count, window_start, window_end
     m = Meeting(
         slug="abc12345",
         title="meeting",
@@ -42,8 +46,6 @@ def _make_meeting(
         date_range_end=end_date,
         duration_minutes=duration,
         location_type=location,
-        time_window_start=window_start,
-        time_window_end=window_end,
         include_weekends=include_weekends,
         created_at=datetime(2026, 5, 4),
     )
@@ -91,7 +93,9 @@ def test_each_candidate_duration_matches_meeting_duration() -> None:
 def test_busy_block_excludes_overlapping_slot() -> None:
     meeting = _make_meeting(participant_count=1)
     parts = [_participant(1, "a")]
-    busy = {1: [_block(1, datetime(2026, 5, 11, 9, 0), datetime(2026, 5, 15, 22, 0))]}
+    # Cover the entire MEETING_WINDOW (06:00-24:00) across the full
+    # date_range so no slot survives anywhere.
+    busy = {1: [_block(1, datetime(2026, 5, 11, 6, 0), datetime(2026, 5, 16, 0, 0))]}
     candidates, suggestion = calculate_candidates(meeting, busy, participants=parts)
     assert candidates == []
     assert suggestion is not None
@@ -200,18 +204,17 @@ def test_weekends_included_when_toggle_on() -> None:
 
 
 def test_time_window_respected() -> None:
-    """No candidate may start before window_start or end after window_end."""
-    meeting = _make_meeting(
-        participant_count=1,
-        window_start=time(13, 0),
-        window_end=time(15, 0),
-        duration=60,
-    )
+    """Issue #57 — every meeting now uses the same MEETING_WINDOW
+    (06:00-24:00). The per-meeting window column is gone, so no candidate
+    may start before 06:00 or end after 24:00 regardless of input."""
+    meeting = _make_meeting(participant_count=1, duration=60)
     parts = [_participant(1, "a")]
     candidates, _ = calculate_candidates(meeting, {1: []}, participants=parts, max_candidates=20)
     for c in candidates:
-        assert c.start.time() >= time(13, 0)
-        assert c.end.time() <= time(15, 0)
+        assert c.start.time() >= time(6, 0)
+        # Slot end of exactly 00:00 is the last 23:30 slot extending to
+        # midnight; everything else stays within the same calendar day.
+        assert c.end.time() == time(0, 0) or c.start.date() == c.end.date()
 
 
 # -------------------------------------------------------- S3 fallback: 1 missing
@@ -268,8 +271,9 @@ def test_higher_available_count_ranks_first() -> None:
         end_date=date(2026, 5, 12),
     )
     parts = [_participant(1, "a"), _participant(2, "b")]
-    # b is busy 09:00-12:00 -> only afternoon both free
-    busy = {1: [], 2: [_block(2, datetime(2026, 5, 12, 9), datetime(2026, 5, 12, 12))]}
+    # b is busy 06:00-12:00 -> only afternoon both free under the new
+    # 06:00-24:00 window.
+    busy = {1: [], 2: [_block(2, datetime(2026, 5, 12, 6), datetime(2026, 5, 12, 12))]}
     candidates, _ = calculate_candidates(meeting, busy, participants=parts)
     assert candidates[0].available_count == 2
     assert candidates[0].start.hour >= 12
@@ -307,22 +311,30 @@ def test_candidate_datetimes_are_kst_naive() -> None:
 
 
 def test_build_timetable_30min_slots_and_nicknames() -> None:
+    """Issue #57 — fixed 06:00-24:00 window means 36 30-min slots per day.
+    The first slot starts at 06:00 regardless of any (now-removed) window
+    kwargs the test supplies.
+    """
     meeting = _make_meeting(
         duration=60,
         participant_count=2,
         start_date=date(2026, 5, 12),
         end_date=date(2026, 5, 12),
-        window_start=time(9, 0),
-        window_end=time(11, 0),
     )
     parts = [_participant(1, "alice"), _participant(2, "bob")]
     busy = {1: [_block(1, datetime(2026, 5, 12, 9, 0), datetime(2026, 5, 12, 9, 30))], 2: []}
     slots = build_timetable(meeting, parts, busy)
-    # Expect 4 slots of 30 min within 09:00-11:00.
-    assert len(slots) == 4
-    assert slots[0]["start"] == datetime(2026, 5, 12, 9, 0)
-    assert slots[0]["end"] == datetime(2026, 5, 12, 9, 30)
-    assert slots[0]["available_count"] == 1
-    assert slots[0]["available_nicknames"] == ["bob"]
-    assert slots[1]["available_count"] == 2
-    assert sorted(slots[1]["available_nicknames"]) == ["alice", "bob"]
+    # 06:00-24:00 = 18 hours × 2 slots/hour = 36 30-min slots.
+    assert len(slots) == 36
+    assert slots[0]["start"] == datetime(2026, 5, 12, 6, 0)
+    assert slots[0]["end"] == datetime(2026, 5, 12, 6, 30)
+    assert slots[-1]["start"] == datetime(2026, 5, 12, 23, 30)
+    # 06:00-06:30 — neither alice nor bob busy → both free.
+    assert slots[0]["available_count"] == 2
+    # 09:00-09:30 — alice is in that exact slot → only bob free.
+    nine = next(s for s in slots if s["start"] == datetime(2026, 5, 12, 9, 0))
+    assert nine["available_count"] == 1
+    assert nine["available_nicknames"] == ["bob"]
+    nine_thirty = next(s for s in slots if s["start"] == datetime(2026, 5, 12, 9, 30))
+    assert nine_thirty["available_count"] == 2
+    assert sorted(nine_thirty["available_nicknames"]) == ["alice", "bob"]

@@ -32,7 +32,6 @@ import { useToast } from "@/components/ui/toast"
 import { cn } from "@/lib/cn"
 
 const dateRegex = /^\d{4}-\d{2}-\d{2}$/
-const timeRegex = /^\d{2}:\d{2}$/
 
 const schema = z
   .object({
@@ -46,8 +45,6 @@ const schema = z
       "30/60/90/120/150/180 중에서 선택하세요",
     ),
     location_type: z.enum(["online", "offline", "any"]),
-    time_window_start: z.string().regex(timeRegex, "HH:MM 형식으로 입력하세요"),
-    time_window_end: z.string().regex(timeRegex, "HH:MM 형식으로 입력하세요"),
     include_weekends: z.boolean(),
   })
   .superRefine((v, ctx) => {
@@ -86,13 +83,6 @@ const schema = z
         })
       }
     }
-    if (v.time_window_end <= v.time_window_start) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["time_window_end"],
-        message: "종료 시각은 시작 시각보다 이후여야 합니다",
-      })
-    }
   })
 
 type FormValues = z.infer<typeof schema>
@@ -105,8 +95,6 @@ const defaultValues: FormValues = {
   candidate_dates: null,
   duration_minutes: 60,
   location_type: "offline" satisfies LocationType,
-  time_window_start: "09:00",
-  time_window_end: "22:00",
   // v3.21 — "주말도 포함" 체크박스 UI 가 제거되어 항상 true 로 시작합니다.
   // 주말 제외 회의를 만들고 싶으면 picked 모드에서 평일만 골라 주세요.
   include_weekends: true,
@@ -153,8 +141,6 @@ export default function CreateMeetingPage() {
               candidate_dates: null,
               duration_minutes: values.duration_minutes,
               location_type: values.location_type,
-              time_window_start: values.time_window_start,
-              time_window_end: values.time_window_end,
               include_weekends: values.include_weekends,
             }
           : {
@@ -165,8 +151,6 @@ export default function CreateMeetingPage() {
               candidate_dates: values.candidate_dates,
               duration_minutes: values.duration_minutes,
               location_type: values.location_type,
-              time_window_start: values.time_window_start,
-              time_window_end: values.time_window_end,
               include_weekends: values.include_weekends,
             }
 
@@ -341,26 +325,6 @@ export default function CreateMeetingPage() {
                     <p className="text-xs text-destructive">{errors.location_type.message}</p>
                   ) : null}
                 </fieldset>
-
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="time_window_start">시작 시간</Label>
-                  <Input id="time_window_start" type="time" {...register("time_window_start")} />
-                  {errors.time_window_start ? (
-                    <p className="text-xs text-destructive">
-                      {errors.time_window_start.message}
-                    </p>
-                  ) : null}
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="time_window_end">종료 시간</Label>
-                  <Input id="time_window_end" type="time" {...register("time_window_end")} />
-                  {errors.time_window_end ? (
-                    <p className="text-xs text-destructive">
-                      {errors.time_window_end.message}
-                    </p>
-                  ) : null}
-                </div>
 
               </section>
             </div>

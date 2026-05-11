@@ -25,8 +25,6 @@ def _create_offline_meeting(client, *, location_type: str = "offline") -> dict:
         "date_range_end": "2026-06-01",
         "duration_minutes": 60,
         "location_type": location_type,
-        "time_window_start": "09:00",
-        "time_window_end": "22:00",
         "include_weekends": False,
     }
     resp = client.post("/api/meetings", json=body)
@@ -298,7 +296,13 @@ def test_patch_me_buffer_allowed_after_confirmation(client) -> None:
 def test_explicit_zero_buffer_overrides_default_downward(client) -> None:
     """h — scheduler default 60min would exclude the 13:30-14:30 slot
     adjacent to a 12:00-13:30 busy block; setting personal buffer to 0
-    restores it."""
+    restores it.
+
+    Issue #57 changed the search window from configurable 09-22 to a
+    fixed 06-24. To keep this assertion meaningful against /calculate's
+    top-3 + 2h spread ranking, we fill the rest of the day with busy
+    blocks so 13:30-14:30 is the ONLY remaining free slot under buffer=0.
+    """
     meeting = _create_offline_meeting(client)
     slug = meeting["slug"]
     _register(client, slug, "alice")
@@ -306,16 +310,18 @@ def test_explicit_zero_buffer_overrides_default_downward(client) -> None:
         client,
         slug,
         [
-            ("2026-06-01T12:00:00+09:00", "2026-06-01T13:30:00+09:00"),
-            ("2026-06-01T16:00:00+09:00", "2026-06-01T17:00:00+09:00"),
+            # Block 06:00 → 13:30 (alice unavailable for the whole morning).
+            ("2026-06-01T06:00:00+09:00", "2026-06-01T13:30:00+09:00"),
+            # Block 14:30 → 24:00 (alice unavailable until the day ends).
+            ("2026-06-01T14:30:00+09:00", "2026-06-02T00:00:00+09:00"),
         ],
     )
 
-    # With the inherited default 60, 13:30-14:30 is within [11:00, 15:30]
-    # for the first block → excluded.
+    # With the inherited default 60, the 13:30-14:30 slot sits inside the
+    # 60-min padding around the 06:00→13:30 block. /calculate finds no
+    # window where alice is free → empty candidate list.
     before = client.post(f"/api/meetings/{slug}/calculate").json()
-    before_starts = {c["start"] for c in before["candidates"]}
-    assert "2026-06-01T13:30:00+09:00" not in before_starts
+    assert before["candidates"] == []
 
     # Set personal buffer to 0 — no padding around busy blocks for alice.
     assert (

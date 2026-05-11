@@ -7,7 +7,6 @@ import { useEffect, useState } from "react"
 import { Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogFooter, DialogTitle } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select } from "@/components/ui/select"
 import { useToast } from "@/components/ui/toast"
@@ -31,16 +30,11 @@ interface Props {
 }
 
 const dateRegex = /^\d{4}-\d{2}-\d{2}$/
-const timeRegex = /^\d{2}:\d{2}$/
 const LOCATION_OPTIONS: Array<{ value: LocationType; label: string }> = [
   { value: "online", label: "온라인" },
   { value: "offline", label: "오프라인" },
   { value: "any", label: "상관없음" },
 ]
-
-function trimTime(t: string): string {
-  return t.length >= 5 ? t.slice(0, 5) : t
-}
 
 export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }: Props) {
   const { toast } = useToast()
@@ -51,8 +45,6 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
   const [pickedDates, setPickedDates] = useState<string[]>(meeting.candidate_dates ?? [])
   const [duration, setDuration] = useState<number>(meeting.duration_minutes)
   const [locationType, setLocationType] = useState<LocationType>(meeting.location_type)
-  const [timeStart, setTimeStart] = useState<string>(trimTime(meeting.time_window_start))
-  const [timeEnd, setTimeEnd] = useState<string>(trimTime(meeting.time_window_end))
   const [includeWeekends, setIncludeWeekends] = useState<boolean>(meeting.include_weekends)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -66,8 +58,6 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
     setPickedDates(meeting.candidate_dates ?? [])
     setDuration(meeting.duration_minutes)
     setLocationType(meeting.location_type)
-    setTimeStart(trimTime(meeting.time_window_start))
-    setTimeEnd(trimTime(meeting.time_window_end))
     setIncludeWeekends(meeting.include_weekends)
     setError(null)
   }, [open, meeting])
@@ -78,14 +68,6 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
 
     if (![30, 60, 90, 120, 150, 180].includes(duration)) {
       setError("회의 길이를 다시 선택하세요.")
-      return
-    }
-    if (!timeRegex.test(timeStart) || !timeRegex.test(timeEnd)) {
-      setError("시간은 HH:MM 형식입니다.")
-      return
-    }
-    if (timeEnd <= timeStart) {
-      setError("종료 시간은 시작 시간보다 이후여야 합니다.")
       return
     }
     if (dateMode === "range") {
@@ -116,8 +98,6 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
             candidate_dates: null,
             duration_minutes: duration,
             location_type: locationType,
-            time_window_start: timeStart,
-            time_window_end: timeEnd,
             include_weekends: includeWeekends,
           }
         : {
@@ -127,8 +107,6 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
             candidate_dates: pickedDates,
             duration_minutes: duration,
             location_type: locationType,
-            time_window_start: timeStart,
-            time_window_end: timeEnd,
             include_weekends: includeWeekends,
           }
 
@@ -226,27 +204,6 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
                 })}
               </div>
             </fieldset>
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-time-start">시작 시간</Label>
-              <Input
-                id="edit-time-start"
-                type="time"
-                value={timeStart}
-                onChange={(e) => setTimeStart(e.target.value)}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-time-end">종료 시간</Label>
-              <Input
-                id="edit-time-end"
-                type="time"
-                value={timeEnd}
-                onChange={(e) => setTimeEnd(e.target.value)}
-              />
-            </div>
           </div>
 
           {error ? <p className="text-sm text-destructive">{error}</p> : null}

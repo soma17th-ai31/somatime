@@ -94,8 +94,6 @@ def create_meeting(
             candidate_dates=candidate_dates_iso,
             duration_minutes=payload.duration_minutes,
             location_type=payload.location_type.value,
-            time_window_start=payload.time_window_start,
-            time_window_end=payload.time_window_end,
             include_weekends=payload.include_weekends,
             created_at=now_kst_naive(),
         )
@@ -212,8 +210,6 @@ def get_meeting(
         required_nicknames=required_names,
         is_ready_to_calculate=submitted >= 1,
         location_type=meeting.location_type,
-        time_window_start=meeting.time_window_start,
-        time_window_end=meeting.time_window_end,
         include_weekends=meeting.include_weekends,
         share_url=f"{settings.APP_BASE_URL.rstrip('/')}/m/{meeting.slug}",
         expires_at=from_kst_naive(expires_at),
@@ -258,8 +254,6 @@ def update_meeting_settings(
     )
     meeting.duration_minutes = payload.duration_minutes
     meeting.location_type = payload.location_type.value
-    meeting.time_window_start = payload.time_window_start
-    meeting.time_window_end = payload.time_window_end
     meeting.include_weekends = payload.include_weekends
 
     db.add(meeting)

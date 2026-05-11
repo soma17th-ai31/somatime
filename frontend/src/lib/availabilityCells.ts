@@ -8,6 +8,11 @@ import { buildKstIso } from "./datetime"
 
 const SLOT_MINUTES = 30
 
+// #57 — time_window 입력이 제거되어 모든 회의의 가용 시간 축은 06:00 ~ 24:00 으로 고정.
+// 마지막 슬롯은 23:30 시작 (end exclusive).
+export const WINDOW_START = "06:00"
+export const WINDOW_END = "24:00"
+
 const KST_WEEKDAY_FORMATTER = new Intl.DateTimeFormat("ko-KR", {
   timeZone: "Asia/Seoul",
   weekday: "short",
@@ -68,9 +73,11 @@ export function getMeetingDates(meeting: MeetingDetail): string[] {
   })
 }
 
-export function getMeetingTimes(meeting: MeetingDetail): string[] {
-  const startMin = parseHHMMToMinutes(meeting.time_window_start)
-  const endMin = parseHHMMToMinutes(meeting.time_window_end)
+// #57 — 회의 가용 시간 축은 fixed window (WINDOW_START~WINDOW_END). meeting 파라미터는
+// 호환을 위해 유지하지만 사용하지 않음.
+export function getMeetingTimes(_meeting: MeetingDetail): string[] {
+  const startMin = parseHHMMToMinutes(WINDOW_START)
+  const endMin = parseHHMMToMinutes(WINDOW_END)
   const out: string[] = []
   for (let m = startMin; m < endMin; m += SLOT_MINUTES) {
     out.push(minutesToHHMM(m))

@@ -23,8 +23,6 @@ def _create_meeting(client) -> dict:
         "date_range_end": "2026-06-05",
         "duration_minutes": 60,
         "location_type": "online",
-        "time_window_start": "09:00",
-        "time_window_end": "22:00",
         "include_weekends": False,
     }
     resp = client.post("/api/meetings", json=body)
@@ -146,8 +144,6 @@ def test_cancel_confirm_unlocks_settings_patch(client) -> None:
         "candidate_dates": None,
         "duration_minutes": 60,
         "location_type": "online",
-        "time_window_start": "09:00",
-        "time_window_end": "22:00",
         "include_weekends": False,
     }
     blocked = client.patch(f"/api/meetings/{slug}/settings", json=settings_body)

@@ -23,10 +23,10 @@ v3.2 (2026-05-06 organizer gate removed, Path B):
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime
 from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import JSON, Boolean, Date, DateTime, Integer, String, Text, Time
+from sqlalchemy import JSON, Boolean, Date, DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -60,8 +60,10 @@ class Meeting(Base):
     # Buffer is now strictly per-participant (Participant.buffer_minutes), with
     # a hard-coded default in app.services.scheduler.DEFAULT_BUFFER_MINUTES.
 
-    time_window_start: Mapped[time] = mapped_column(Time, nullable=False)
-    time_window_end: Mapped[time] = mapped_column(Time, nullable=False)
+    # Issue #57 — time_window_start / time_window_end columns dropped.
+    # All meetings now share a fixed 06:00-24:00 search window defined by
+    # MEETING_WINDOW_START / MEETING_WINDOW_END in app.services.scheduler.
+
     include_weekends: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     confirmed_slot_start: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)

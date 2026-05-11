@@ -126,14 +126,6 @@ export function MeetingSummary({
           </div>
           <div>
             <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              시간대
-            </dt>
-            <dd className="mt-1 text-foreground">
-              매일 {meeting.time_window_start} ~ {meeting.time_window_end}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
               회의 길이
             </dt>
             <dd className="mt-1 text-foreground">{meeting.duration_minutes}분</dd>
