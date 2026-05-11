@@ -128,7 +128,8 @@ def register_participant(client):
     def _register(slug: str, nickname: str) -> dict:
         resp = client.post(
             f"/api/meetings/{slug}/participants",
-            json={"nickname": nickname},
+            # buffer-on-join: required field. Tests that don't care pick 60.
+            json={"nickname": nickname, "buffer_minutes": 60},
         )
         assert resp.status_code in (200, 201), resp.text
         return resp.json()

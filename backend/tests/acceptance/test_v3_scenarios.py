@@ -55,8 +55,16 @@ def _set_my_buffer(client, slug: str, nickname: str, buffer_minutes: int) -> Non
     assert resp.status_code == 200, resp.text
 
 
-def _register(client, slug: str, nickname: str, pin: str | None = None) -> dict:
-    payload = {"nickname": nickname}
+def _register(
+    client,
+    slug: str,
+    nickname: str,
+    pin: str | None = None,
+    buffer_minutes: int = 60,
+) -> dict:
+    # buffer-on-join: every POST /participants must carry an explicit
+    # buffer_minutes (0/30/60/90/120). Tests default to 60.
+    payload: dict = {"nickname": nickname, "buffer_minutes": buffer_minutes}
     if pin is not None:
         payload["pin"] = pin
     resp = client.post(f"/api/meetings/{slug}/participants", json=payload)

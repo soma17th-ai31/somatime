@@ -37,11 +37,18 @@ class ParticipantCreate(BaseModel):
     register → edit → toggle). When omitted, defaults to False for the new
     participant; for the pre-submit re-register path the field is updated
     only when explicitly provided (None → leave existing value alone).
+
+    buffer-on-join: ``buffer_minutes`` is required at registration time —
+    the FE join screen always collects it. Allowed values are
+    0/30/60/90/120; null is not allowed here. PATCH /me later may still
+    set the value to null (inherit/fallback), but a brand-new row always
+    starts with an explicit choice.
     """
 
     nickname: str = Field(min_length=1, max_length=50)
     pin: Optional[str] = Field(default=None, max_length=8)
     is_required: Optional[bool] = Field(default=None)
+    buffer_minutes: int
 
     @field_validator("pin", mode="before")
     @classmethod
@@ -56,6 +63,15 @@ class ParticipantCreate(BaseModel):
     @classmethod
     def _check_pin(cls, v: Optional[str]) -> Optional[str]:
         return _validate_pin(v)
+
+    @field_validator("buffer_minutes")
+    @classmethod
+    def _check_buffer(cls, v: int) -> int:
+        if v not in _ALLOWED_PARTICIPANT_BUFFER_MINUTES:
+            raise ValueError(
+                "buffer_minutes must be one of 0/30/60/90/120"
+            )
+        return v
 
 
 class ParticipantLogin(BaseModel):

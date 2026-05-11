@@ -34,7 +34,10 @@ def _create(client, **overrides) -> dict:
 
 
 def _register_and_submit(client, slug: str, nickname: str, busy: Iterable[tuple] = ()):
-    r = client.post(f"/api/meetings/{slug}/participants", json={"nickname": nickname})
+    r = client.post(
+        f"/api/meetings/{slug}/participants",
+        json={"nickname": nickname, "buffer_minutes": 60},
+    )
     assert r.status_code in (200, 201), r.text
     payload = {"busy_blocks": [{"start": s, "end": e} for s, e in busy]}
     r2 = client.post(f"/api/meetings/{slug}/availability/manual", json=payload)

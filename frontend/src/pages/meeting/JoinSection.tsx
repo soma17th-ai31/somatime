@@ -15,24 +15,32 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
 import { useToast } from "@/components/ui/toast"
 import { api } from "@/lib/api"
-import { ApiError } from "@/lib/types"
+import { ApiError, type LocationType } from "@/lib/types"
 
 interface Props {
   slug: string
+  // #13 — online 회의면 buffer Select 미렌더 (payload 는 0 하드코딩).
+  locationType: LocationType
   onJoined: (nickname: string) => void
 }
 
 const PIN_REGEX = /^\d{4}$/
+const BUFFER_PLACEHOLDER = ""
+const VALID_BUFFERS = new Set([0, 30, 60, 90, 120])
 
-export function JoinSection({ slug, onJoined }: Props) {
+export function JoinSection({ slug, locationType, onJoined }: Props) {
   const { toast } = useToast()
   const [nickname, setNickname] = useState("")
   const [pin, setPin] = useState("")
   const [isRequired, setIsRequired] = useState(false)
+  const [bufferDraft, setBufferDraft] = useState<string>(BUFFER_PLACEHOLDER)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const showBuffer = locationType !== "online"
 
   async function handleJoin(e: React.FormEvent) {
     e.preventDefault()
@@ -52,12 +60,29 @@ export function JoinSection({ slug, onJoined }: Props) {
       return
     }
 
+    let bufferMinutes: number
+    if (showBuffer) {
+      if (bufferDraft === BUFFER_PLACEHOLDER) {
+        setError("이동 버퍼를 선택하세요.")
+        return
+      }
+      const parsed = Number.parseInt(bufferDraft, 10)
+      if (!Number.isFinite(parsed) || !VALID_BUFFERS.has(parsed)) {
+        setError("이동 버퍼 값이 올바르지 않습니다.")
+        return
+      }
+      bufferMinutes = parsed
+    } else {
+      bufferMinutes = 0
+    }
+
     setSubmitting(true)
     try {
       const res = await api.joinMeeting(slug, {
         nickname: trimmed,
         pin: pin.length > 0 ? pin : undefined,
         is_required: isRequired || undefined,
+        buffer_minutes: bufferMinutes,
       })
       toast(
         isRequired
@@ -134,6 +159,28 @@ export function JoinSection({ slug, onJoined }: Props) {
             />
             <span>필수 참여자 (예: 멘토 — 빠지면 안 되는 회의)</span>
           </label>
+          {showBuffer ? (
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="join-buffer">이동 버퍼 (필수)</Label>
+              <Select
+                id="join-buffer"
+                value={bufferDraft}
+                onChange={(e) => setBufferDraft(e.target.value)}
+                data-testid="join-buffer-select"
+              >
+                <option value={BUFFER_PLACEHOLDER}>이동 버퍼를 선택하세요</option>
+                <option value="0">0분 (버퍼 없음)</option>
+                <option value="30">30분</option>
+                <option value="60">60분</option>
+                <option value="90">90분</option>
+                <option value="120">120분</option>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                본인의 이동시간 등을 반영해 후보 시간 앞뒤로 비워둘 시간입니다. 나중에
+                개인 설정에서 수정할 수 있습니다.
+              </p>
+            </div>
+          ) : null}
           <div className="flex flex-wrap items-center gap-3">
             <Button type="submit" disabled={submitting} data-testid="join-submit">
               {submitting ? "확인 중..." : "로그인"}

@@ -219,10 +219,12 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
     await p.goto(shareUrl)
 
     // Step 6 — JoinSection. Optional PIN field is a 4-digit input.
+    // #13 — offline 회의는 buffer 필수. 60분으로 선택.
     await p.locator('[data-testid="join-nickname"]').fill(nickname)
     if (opts.pin) {
       await p.locator('[data-testid="join-pin"]').fill(opts.pin)
     }
+    await p.locator('[data-testid="join-buffer-select"]').selectOption("60")
     await p.locator('[data-testid="join-submit"]').click()
 
     // Step 7 — AvailabilitySection appears with tabs.

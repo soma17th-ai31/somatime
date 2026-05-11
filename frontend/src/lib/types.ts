@@ -95,6 +95,9 @@ export interface ParticipantJoinRequest {
   nickname: string
   pin?: string | null
   is_required?: boolean
+  // #13 — buffer-on-join. 등록 시 필수. online 회의면 FE 가 0 으로 하드코딩.
+  // 값: 0/30/60/90/120 분.
+  buffer_minutes: number
 }
 
 export interface ParticipantLoginRequest {
