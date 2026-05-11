@@ -269,7 +269,7 @@ def test_S12_llm_validation_failure_falls_back(client) -> None:
     _submit_manual(client, slug, [])
 
     class _BadAdapter:
-        def recommend(self, candidate_windows, meeting, max_candidates=3):
+        def recommend(self, candidate_windows, meeting, max_candidates=3, **kwargs):
             return {
                 "summary": "x",
                 "candidates": [
@@ -314,7 +314,7 @@ def test_S13_llm_call_count_one_on_first_pass(client) -> None:
     spy = {"count": 0}
 
     class _Once:
-        def recommend(self, windows, meeting, max_candidates=3):
+        def recommend(self, windows, meeting, max_candidates=3, **kwargs):
             spy["count"] += 1
             iso_pairs = [(w.start.isoformat(), w.end.isoformat()) for w in windows[:1]]
             return {
@@ -354,7 +354,7 @@ def test_S13_llm_call_count_caps_at_4(client) -> None:
     spy = {"count": 0}
 
     class _AlwaysBad:
-        def recommend(self, windows, meeting, max_candidates=3):
+        def recommend(self, windows, meeting, max_candidates=3, **kwargs):
             spy["count"] += 1
             return {
                 "summary": "x",
@@ -395,7 +395,7 @@ def test_S13_progressive_failures_reach_target_attempt(client) -> None:
     spy = {"count": 0}
 
     class _ThirdSuccess:
-        def recommend(self, windows, meeting, max_candidates=3):
+        def recommend(self, windows, meeting, max_candidates=3, **kwargs):
             spy["count"] += 1
             if spy["count"] < 3:
                 return {

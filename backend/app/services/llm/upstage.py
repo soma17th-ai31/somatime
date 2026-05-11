@@ -51,9 +51,10 @@ class UpstageAdapter(LLMAdapter):
         candidate_windows: "Sequence[CandidateWindow]",
         meeting: Meeting,
         max_candidates: int = 3,
+        required_participants: Sequence[str] = (),
     ) -> dict:
         payload = self.build_recommendation_payload(
-            candidate_windows, meeting, max_candidates
+            candidate_windows, meeting, max_candidates, required_participants
         )
         user_prompt = build_recommendation_user_prompt(payload)
 
