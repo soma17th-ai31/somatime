@@ -137,7 +137,9 @@ def generate_candidate_windows(
         available, missing = _check_slot(
             slot=slot,
             busy_blocks_by_participant=busy_blocks_by_participant,
-            buffer_minutes=_effective_buffer_minutes(meeting),
+            buffer_minutes_by_pid=_build_buffer_by_pid(
+                meeting, participants, participant_ids
+            ),
             participant_ids=participant_ids,
         )
         if not available:
@@ -306,7 +308,9 @@ def calculate_candidates(
         available, missing = _check_slot(
             slot=slot,
             busy_blocks_by_participant=busy_blocks_by_participant,
-            buffer_minutes=_effective_buffer_minutes(meeting),
+            buffer_minutes_by_pid=_build_buffer_by_pid(
+                meeting, participants, participant_ids
+            ),
             participant_ids=participant_ids,
         )
         avail_count = len(available)
@@ -354,12 +358,42 @@ def calculate_candidates(
 # ============================================================================
 
 
-def _effective_buffer_minutes(meeting: Meeting) -> int:
-    """v3: offline AND any apply buffer; online == 0 (Q8)."""
+def _effective_buffer_minutes(
+    meeting: Meeting, participant: Optional[Participant] = None
+) -> int:
+    """Per-participant effective buffer (issue #13).
+
+    Rules (in order):
+      * online meeting → 0, regardless of personal override.
+      * participant.buffer_minutes IS NOT NULL → that value (personal override).
+      * otherwise → meeting.offline_buffer_minutes (the meeting-level default).
+    """
     if meeting.location_type == "online":
         return 0
-    # offline / any
+    if participant is not None and participant.buffer_minutes is not None:
+        return int(participant.buffer_minutes)
     return int(getattr(meeting, "offline_buffer_minutes", None) or BUFFER_MINUTES)
+
+
+def _build_buffer_by_pid(
+    meeting: Meeting,
+    participants: Optional[Sequence[Participant]],
+    participant_ids: Sequence[int],
+) -> Dict[int, int]:
+    """Map pid → effective buffer minutes for this meeting+participant.
+
+    Falls back to the meeting-level default for any pid that doesn't appear
+    in ``participants`` (e.g. tests that drive the scheduler with pids alone).
+    """
+    out: Dict[int, int] = {}
+    by_id: Dict[int, Participant] = (
+        {p.id: p for p in participants} if participants else {}
+    )
+    default_buffer = _effective_buffer_minutes(meeting)
+    for pid in participant_ids:
+        p = by_id.get(pid)
+        out[pid] = _effective_buffer_minutes(meeting, p) if p is not None else default_buffer
+    return out
 
 
 def _nickname_map(
@@ -406,19 +440,25 @@ def _check_slot(
     *,
     slot: Slot,
     busy_blocks_by_participant: Dict[int, List[BusyBlock]],
-    buffer_minutes: int,
+    buffer_minutes_by_pid: Dict[int, int],
     participant_ids: Sequence[int],
 ) -> Tuple[Set[int], Set[int]]:
-    if buffer_minutes:
-        check_start = slot.start - timedelta(minutes=buffer_minutes)
-        check_end = slot.end + timedelta(minutes=buffer_minutes)
-    else:
-        check_start = slot.start
-        check_end = slot.end
+    """Per-participant gating (issue #13).
 
+    Each pid is checked against ``[slot.start - their_buffer, slot.end +
+    their_buffer]``, so participants with a larger personal buffer may be
+    excluded from a window where shorter-buffer peers are fine.
+    """
     available: Set[int] = set()
     missing: Set[int] = set()
     for pid in participant_ids:
+        buf = buffer_minutes_by_pid.get(pid, 0)
+        if buf:
+            check_start = slot.start - timedelta(minutes=buf)
+            check_end = slot.end + timedelta(minutes=buf)
+        else:
+            check_start = slot.start
+            check_end = slot.end
         blocks = busy_blocks_by_participant.get(pid, [])
         if _is_participant_free(blocks, check_start, check_end):
             available.add(pid)

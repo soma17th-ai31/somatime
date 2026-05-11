@@ -50,6 +50,13 @@ class Participant(Base):
         server_default="0",
     )
 
+    # Issue #13 — per-participant offline buffer override. NULL means "use
+    # the meeting's offline_buffer_minutes default". 0 is an explicit "no
+    # buffer" choice that survives meeting-level changes.
+    buffer_minutes: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, default=None, server_default=None
+    )
+
     source_type: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
     confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

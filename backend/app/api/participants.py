@@ -190,6 +190,16 @@ def update_self(
     if "is_required" in data and data["is_required"] is not None:
         me.is_required = bool(data["is_required"])
 
+    # Issue #13 — personal buffer override.
+    #   field absent → leave existing buffer_minutes unchanged.
+    #   explicit null → reset to "inherit the meeting default".
+    #   0/30/60/90/120 → store the explicit value.
+    # Note: allowed even after the meeting is confirmed, mirroring the
+    # nickname/pin/is_required policy. Confirmed slots are already pinned
+    # so the value has no scheduling impact at that point.
+    if "buffer_minutes" in data:
+        me.buffer_minutes = data["buffer_minutes"]
+
     db.add(me)
     db.commit()
     db.refresh(me)
@@ -198,4 +208,5 @@ def update_self(
         "nickname": me.nickname,
         "has_pin": me.pin is not None,
         "is_required": bool(me.is_required),
+        "buffer_minutes": me.buffer_minutes,
     }

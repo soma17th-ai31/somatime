@@ -168,7 +168,16 @@ export function ManualAvailabilityForm({
       </div>
 
       {mode === "timeline" ? (
-        <AvailabilityTimeline meeting={meeting} value={selected} onChange={setSelected} />
+        <AvailabilityTimeline
+          meeting={meeting}
+          value={selected}
+          onChange={setSelected}
+          bufferMinutes={
+            meeting.location_type === "online"
+              ? 0
+              : meeting.my_buffer_minutes ?? meeting.offline_buffer_minutes
+          }
+        />
       ) : (
         <AvailabilityGrid meeting={meeting} value={selected} onChange={setSelected} />
       )}

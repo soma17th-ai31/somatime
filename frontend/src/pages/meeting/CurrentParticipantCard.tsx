@@ -14,26 +14,50 @@ import { Pencil, X, Check, Loader2, LogOut, Star } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select } from "@/components/ui/select"
 import { useToast } from "@/components/ui/toast"
 import { api } from "@/lib/api"
-import { ApiError } from "@/lib/types"
+import { ApiError, type LocationType } from "@/lib/types"
 
 interface Props {
   slug: string
   nickname: string
   isRequired: boolean
+  // #13 — 본인 개인 buffer (분). null = 회의 기본값 사용.
+  myBufferMinutes: number | null
+  // 회의 전체 default buffer (분). online 회의 시 0.
+  meetingBufferMinutes: number
+  locationType: LocationType
   onRenamed: (newNickname: string) => void
   onSwitchUser: () => void
+  onBufferChanged?: (newValue: number | null) => void
 }
 
 const PIN_REGEX = /^\d{4}$/
+
+// "회의 기본값" sentinel — Select 의 빈 value.
+const BUFFER_INHERIT = ""
+
+function bufferToFormValue(my: number | null): string {
+  return my === null ? BUFFER_INHERIT : String(my)
+}
+
+function formValueToBuffer(v: string): number | null {
+  if (v === BUFFER_INHERIT) return null
+  const n = Number.parseInt(v, 10)
+  return Number.isFinite(n) ? n : null
+}
 
 export function CurrentParticipantCard({
   slug,
   nickname,
   isRequired,
+  myBufferMinutes,
+  meetingBufferMinutes,
+  locationType,
   onRenamed,
   onSwitchUser,
+  onBufferChanged,
 }: Props) {
   const { toast } = useToast()
   const [editing, setEditing] = useState(false)
@@ -41,20 +65,28 @@ export function CurrentParticipantCard({
   const [draftPin, setDraftPin] = useState("")
   const [pendingClearPin, setPendingClearPin] = useState(false)
   const [draftIsRequired, setDraftIsRequired] = useState(isRequired)
+  const [draftBuffer, setDraftBuffer] = useState<string>(bufferToFormValue(myBufferMinutes))
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Keep the draft checkbox in sync with the latest server-known value when
+  const showBuffer = locationType !== "online"
+  const effectiveBuffer = myBufferMinutes ?? meetingBufferMinutes
+
+  // Keep the draft checkbox/buffer in sync with the latest server-known value when
   // not editing (e.g. another tab toggled it).
   useEffect(() => {
     if (!editing) setDraftIsRequired(isRequired)
   }, [isRequired, editing])
+  useEffect(() => {
+    if (!editing) setDraftBuffer(bufferToFormValue(myBufferMinutes))
+  }, [myBufferMinutes, editing])
 
   function startEdit() {
     setDraftNickname(nickname)
     setDraftPin("")
     setPendingClearPin(false)
     setDraftIsRequired(isRequired)
+    setDraftBuffer(bufferToFormValue(myBufferMinutes))
     setError(null)
     setEditing(true)
   }
@@ -66,6 +98,7 @@ export function CurrentParticipantCard({
     setDraftPin("")
     setPendingClearPin(false)
     setDraftIsRequired(isRequired)
+    setDraftBuffer(bufferToFormValue(myBufferMinutes))
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -82,7 +115,12 @@ export function CurrentParticipantCard({
       return
     }
 
-    const body: { nickname: string; pin?: string; is_required?: boolean } = {
+    const body: {
+      nickname: string
+      pin?: string
+      is_required?: boolean
+      buffer_minutes?: number | null
+    } = {
       nickname: trimmed,
     }
     if (pendingClearPin) {
@@ -97,11 +135,18 @@ export function CurrentParticipantCard({
     if (draftIsRequired !== isRequired) {
       body.is_required = draftIsRequired
     }
+    // #13 — buffer_minutes 변경분만 포함. null 도 명시 변경(=clear)으로 취급.
+    const nextBuffer = formValueToBuffer(draftBuffer)
+    const bufferChanged = nextBuffer !== myBufferMinutes
+    if (bufferChanged) {
+      body.buffer_minutes = nextBuffer
+    }
 
     if (
       body.nickname === nickname &&
       body.pin === undefined &&
-      body.is_required === undefined
+      body.is_required === undefined &&
+      body.buffer_minutes === undefined
     ) {
       setEditing(false)
       return
@@ -125,6 +170,14 @@ export function CurrentParticipantCard({
         `닉네임이 ${res.nickname}(으)로 변경되었습니다.${pinMessage}${requiredMessage}`,
         "success",
       )
+      if (bufferChanged) {
+        const effective = res.buffer_minutes ?? meetingBufferMinutes
+        toast(
+          `버퍼가 ${effective}분으로 변경되었습니다. 다음 결과 계산부터 적용됩니다.`,
+          "success",
+        )
+        onBufferChanged?.(res.buffer_minutes)
+      }
       onRenamed(res.nickname)
       setEditing(false)
       setDraftPin("")
@@ -154,6 +207,14 @@ export function CurrentParticipantCard({
         >
           <span aria-hidden="true">{isRequired ? "★" : "👤"}</span>
           <span>{nickname}</span>
+          {showBuffer ? (
+            <span
+              className="text-xs font-normal text-muted-foreground"
+              data-testid="buffer-readout"
+            >
+              · 버퍼 {effectiveBuffer}분
+            </span>
+          ) : null}
         </span>
         <Button
           type="button"
@@ -250,6 +311,31 @@ export function CurrentParticipantCard({
         체크 시: 추천 결과가 본인 가능 시간 안에서만 잡힙니다. 다른 참여자 일부가 빠진
         후보도 허용됩니다.
       </p>
+      {showBuffer ? (
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="rename-buffer" className="text-xs">
+            이동 버퍼
+          </Label>
+          <Select
+            id="rename-buffer"
+            value={draftBuffer}
+            onChange={(e) => setDraftBuffer(e.target.value)}
+            className="h-9 text-sm"
+            data-testid="participant-buffer-select"
+          >
+            <option value={BUFFER_INHERIT}>회의 기본값 사용 ({meetingBufferMinutes}분)</option>
+            <option value="0">0분 (버퍼 없음)</option>
+            <option value="30">30분</option>
+            <option value="60">60분</option>
+            <option value="90">90분</option>
+            <option value="120">120분</option>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            본인의 이동시간 등을 반영해 후보 시간 앞뒤로 비워둘 시간입니다. 회의 기본값을
+            덮어씁니다.
+          </p>
+        </div>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
         <Button type="submit" size="sm" disabled={submitting} data-testid="rename-save">
           {submitting ? (

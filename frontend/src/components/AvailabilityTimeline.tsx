@@ -22,6 +22,8 @@ interface AvailabilityTimelineProps {
   meeting: MeetingDetail
   value: Set<string>
   onChange: (next: Set<string>) => void
+  // #13 — 본인 적용 버퍼(분). online 회의면 0. range block 양 끝 영역 음영 시각화에 사용.
+  bufferMinutes?: number
 }
 
 const SLOT_MINUTES = 30
@@ -50,7 +52,12 @@ interface MoveState {
 
 const MOVE_THRESHOLD_PX = 5
 
-export function AvailabilityTimeline({ meeting, value, onChange }: AvailabilityTimelineProps) {
+export function AvailabilityTimeline({
+  meeting,
+  value,
+  onChange,
+  bufferMinutes = 0,
+}: AvailabilityTimelineProps) {
   const dates = getMeetingDates(meeting)
   const startMin = timeToMinutes(meeting.time_window_start)
   const endMin = timeToMinutes(meeting.time_window_end)
@@ -398,6 +405,14 @@ export function AvailabilityTimeline({ meeting, value, onChange }: AvailabilityT
                     move.range.date === r.date &&
                     move.range.startMin === r.startMin &&
                     move.range.endMin === r.endMin
+                  // #13 — 본인 buffer 시각화. block 양 끝에서 안쪽으로 buffer 만큼 음영.
+                  // buffer % of bar → % of block (자기 자신 폭 기준). 50% cap 으로 두 음영이 겹치지 않게.
+                  const bufferShadePct = (() => {
+                    if (bufferMinutes <= 0 || totalMinutes <= 0) return 0
+                    const bufferPctOfBar = (bufferMinutes / totalMinutes) * 100
+                    const pctOfBlock = (bufferPctOfBar / width) * 100
+                    return Math.min(50, pctOfBlock)
+                  })()
                   return (
                     <button
                       key={`${r.date}-${r.startMin}-${r.endMin}`}
@@ -421,6 +436,30 @@ export function AvailabilityTimeline({ meeting, value, onChange }: AvailabilityT
                       onClick={(e) => handleBlockClick(e, r)}
                       aria-label={`${date} ${startLabel} - ${endLabel} 삭제`}
                     >
+                      {bufferShadePct > 0 ? (
+                        <>
+                          <span
+                            aria-hidden
+                            data-testid={`buffer-shadow-${r.date}-${startLabel}-${endLabel}-start`}
+                            className="pointer-events-none absolute inset-y-0 left-0 rounded-l-md"
+                            style={{
+                              width: `${bufferShadePct}%`,
+                              backgroundImage:
+                                "repeating-linear-gradient(45deg, rgba(255,255,255,0.4) 0 4px, transparent 4px 8px)",
+                            }}
+                          />
+                          <span
+                            aria-hidden
+                            data-testid={`buffer-shadow-${r.date}-${startLabel}-${endLabel}-end`}
+                            className="pointer-events-none absolute inset-y-0 right-0 rounded-r-md"
+                            style={{
+                              width: `${bufferShadePct}%`,
+                              backgroundImage:
+                                "repeating-linear-gradient(45deg, rgba(255,255,255,0.4) 0 4px, transparent 4px 8px)",
+                            }}
+                          />
+                        </>
+                      ) : null}
                       <span className="truncate px-2">
                         {startLabel} - {endLabel}
                       </span>

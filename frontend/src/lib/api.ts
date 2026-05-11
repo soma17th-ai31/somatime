@@ -122,15 +122,25 @@ export const api = {
   // is_required field semantics:
   //   - omit field             → leave existing flag unchanged
   //   - is_required: true/false → set accordingly
+  // #13 — buffer_minutes field semantics:
+  //   - omit field    → leave existing value unchanged
+  //   - null          → clear, fall back to meeting.offline_buffer_minutes
+  //   - 0/30/60/90/120 → explicit per-participant value
   updateSelf(
     slug: string,
-    payload: { nickname: string; pin?: string; is_required?: boolean },
+    payload: {
+      nickname: string
+      pin?: string
+      is_required?: boolean
+      buffer_minutes?: number | null
+    },
   ) {
     return request<{
       id: number
       nickname: string
       has_pin: boolean
       is_required: boolean
+      buffer_minutes: number | null
     }>(
       `/api/meetings/${encodeURIComponent(slug)}/participants/me`,
       { method: "PATCH", body: payload },

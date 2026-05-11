@@ -207,4 +207,8 @@ class MeetingDetail(BaseModel):
     # v3.6: present (and possibly empty []) when caller has a participant cookie;
     # null otherwise. Allows the manual form to pre-fill the prior submission.
     my_busy_blocks: Optional[List[ConfirmedSlotInfo]] = None
+    # Issue #13 — calling participant's personal buffer override.
+    # None when caller has no cookie OR the participant left it as
+    # "inherit the meeting's offline_buffer_minutes".
+    my_buffer_minutes: Optional[int] = None
     created_at: datetime
