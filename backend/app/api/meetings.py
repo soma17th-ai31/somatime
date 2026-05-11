@@ -164,6 +164,7 @@ def get_meeting(
     #     Frontend pre-fills the grid as fully available.
     # This split fixes the "first visit shows the grid completely filled" bug.
     me = get_optional_participant(request, meeting.slug, db)
+    my_buffer_minutes: Optional[int] = me.buffer_minutes if me is not None else None
     my_busy_blocks: Optional[List[ConfirmedSlotInfo]] = None
     if me is not None and me.confirmed_at is not None:
         rows = (
@@ -221,6 +222,7 @@ def get_meeting(
         confirmed_slot=confirmed_info,
         confirmed_share_message=meeting.confirmed_share_message,
         my_busy_blocks=my_busy_blocks,
+        my_buffer_minutes=my_buffer_minutes,
         created_at=from_kst_naive(meeting.created_at),
     )
 

@@ -244,12 +244,19 @@ export default function MeetingPage() {
             slug={slug}
             nickname={participantNickname}
             isRequired={(meeting.required_nicknames ?? []).includes(participantNickname)}
+            myBufferMinutes={meeting.my_buffer_minutes ?? null}
+            meetingBufferMinutes={meeting.offline_buffer_minutes}
+            locationType={meeting.location_type}
             onRenamed={(newName) => {
               writeParticipantNickname(slug, newName)
               setParticipantNickname(newName)
               void reloadMeeting()
             }}
             onSwitchUser={handleSwitchUser}
+            onBufferChanged={() => {
+              void reloadMeeting()
+              setRefreshKey((k) => k + 1)
+            }}
           />
         ) : null}
       </header>
