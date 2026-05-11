@@ -167,20 +167,27 @@ export function ManualAvailabilityForm({
         </div>
       </div>
 
-      {mode === "timeline" ? (
-        <AvailabilityTimeline
-          meeting={meeting}
-          value={selected}
-          onChange={setSelected}
-          bufferMinutes={
-            meeting.location_type === "online"
-              ? 0
-              : meeting.my_buffer_minutes ?? 60
-          }
-        />
-      ) : (
-        <AvailabilityGrid meeting={meeting} value={selected} onChange={setSelected} />
-      )}
+      {(() => {
+        const bufferMinutes =
+          meeting.location_type === "online"
+            ? 0
+            : meeting.my_buffer_minutes ?? 60
+        return mode === "timeline" ? (
+          <AvailabilityTimeline
+            meeting={meeting}
+            value={selected}
+            onChange={setSelected}
+            bufferMinutes={bufferMinutes}
+          />
+        ) : (
+          <AvailabilityGrid
+            meeting={meeting}
+            value={selected}
+            onChange={setSelected}
+            bufferMinutes={bufferMinutes}
+          />
+        )
+      })()}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="text-xs text-muted-foreground">
