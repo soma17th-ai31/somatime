@@ -270,7 +270,13 @@ export default function MeetingPage() {
         onCancelConfirm={handleCancelConfirm}
       />
 
-      {participantNickname ? null : <JoinSection slug={slug} onJoined={onJoined} />}
+      {participantNickname ? null : (
+        <JoinSection
+          slug={slug}
+          locationType={meeting.location_type}
+          onJoined={onJoined}
+        />
+      )}
 
       {participantNickname ? (
         <div

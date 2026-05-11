@@ -47,7 +47,10 @@ def test_register_participant_then_submit_manual(client) -> None:
     data = _create_meeting(client)
     slug = data["slug"]
 
-    p_resp = client.post(f"/api/meetings/{slug}/participants", json={"nickname": "alice"})
+    p_resp = client.post(
+        f"/api/meetings/{slug}/participants",
+        json={"nickname": "alice", "buffer_minutes": 60},
+    )
     assert p_resp.status_code in (200, 201)
 
     avail_resp = client.post(
@@ -68,7 +71,10 @@ def test_full_flow_calculate_and_confirm(client) -> None:
     # 3 participants, all with no busy blocks -> entire window is free.
     nicks = ["a", "b", "c"]
     for nick in nicks:
-        client.post(f"/api/meetings/{slug}/participants", json={"nickname": nick})
+        client.post(
+            f"/api/meetings/{slug}/participants",
+            json={"nickname": nick, "buffer_minutes": 60},
+        )
         client.post(
             f"/api/meetings/{slug}/availability/manual",
             json={"busy_blocks": []},

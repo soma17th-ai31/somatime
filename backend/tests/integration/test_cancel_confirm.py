@@ -34,7 +34,10 @@ def _create_meeting(client) -> dict:
 
 def _confirm_first_candidate(client, slug: str) -> dict:
     """Register one participant, submit availability, calculate, confirm."""
-    client.post(f"/api/meetings/{slug}/participants", json={"nickname": "a"})
+    client.post(
+        f"/api/meetings/{slug}/participants",
+        json={"nickname": "a", "buffer_minutes": 60},
+    )
     client.post(
         f"/api/meetings/{slug}/availability/manual",
         json={"busy_blocks": []},

@@ -66,8 +66,16 @@ def _create(client, **overrides) -> dict:
     return resp.json()
 
 
-def _register(client, slug: str, nickname: str, pin: str | None = None) -> dict:
-    payload: dict = {"nickname": nickname}
+def _register(
+    client,
+    slug: str,
+    nickname: str,
+    pin: str | None = None,
+    buffer_minutes: int = 60,
+) -> dict:
+    # buffer-on-join: every POST /participants must carry an explicit
+    # buffer_minutes (0/30/60/90/120). Tests default to 60.
+    payload: dict = {"nickname": nickname, "buffer_minutes": buffer_minutes}
     if pin is not None:
         payload["pin"] = pin
     resp = client.post(f"/api/meetings/{slug}/participants", json=payload)
@@ -411,12 +419,18 @@ def test_S6_participant_isolation(client) -> None:
     data = _create(client, participant_count=2)
     slug = data["slug"]
 
-    b_resp = client.post(f"/api/meetings/{slug}/participants", json={"nickname": "B"})
+    b_resp = client.post(
+        f"/api/meetings/{slug}/participants",
+        json={"nickname": "B", "buffer_minutes": 60},
+    )
     b_token = b_resp.cookies.get(f"somameet_pt_{slug}") or b_resp.json().get("token")
     assert b_token, b_resp.json()
 
     client.cookies.clear()
-    c_resp = client.post(f"/api/meetings/{slug}/participants", json={"nickname": "C"})
+    c_resp = client.post(
+        f"/api/meetings/{slug}/participants",
+        json={"nickname": "C", "buffer_minutes": 60},
+    )
     c_id = c_resp.json().get("id")
 
     client.cookies.clear()
