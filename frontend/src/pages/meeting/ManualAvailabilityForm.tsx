@@ -175,7 +175,7 @@ export function ManualAvailabilityForm({
           bufferMinutes={
             meeting.location_type === "online"
               ? 0
-              : meeting.my_buffer_minutes ?? meeting.offline_buffer_minutes
+              : meeting.my_buffer_minutes ?? 60
           }
         />
       ) : (

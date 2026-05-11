@@ -1,5 +1,5 @@
 // Edit-meeting-settings dialog (v3.19).
-// Lets anyone with the share URL change date / duration / location / buffer /
+// Lets anyone with the share URL change date / duration / location /
 // time window / weekends. Title is not editable here. Confirmed meetings are
 // locked server-side (409 already_confirmed).
 
@@ -51,7 +51,6 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
   const [pickedDates, setPickedDates] = useState<string[]>(meeting.candidate_dates ?? [])
   const [duration, setDuration] = useState<number>(meeting.duration_minutes)
   const [locationType, setLocationType] = useState<LocationType>(meeting.location_type)
-  const [bufferMin, setBufferMin] = useState<number>(meeting.offline_buffer_minutes)
   const [timeStart, setTimeStart] = useState<string>(trimTime(meeting.time_window_start))
   const [timeEnd, setTimeEnd] = useState<string>(trimTime(meeting.time_window_end))
   const [includeWeekends, setIncludeWeekends] = useState<boolean>(meeting.include_weekends)
@@ -67,14 +66,11 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
     setPickedDates(meeting.candidate_dates ?? [])
     setDuration(meeting.duration_minutes)
     setLocationType(meeting.location_type)
-    setBufferMin(meeting.offline_buffer_minutes)
     setTimeStart(trimTime(meeting.time_window_start))
     setTimeEnd(trimTime(meeting.time_window_end))
     setIncludeWeekends(meeting.include_weekends)
     setError(null)
   }, [open, meeting])
-
-  const showBuffer = locationType !== "online"
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -111,11 +107,6 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
         return
       }
     }
-    if (![0, 30, 60, 90, 120].includes(bufferMin)) {
-      setError("이동 버퍼 값이 올바르지 않습니다.")
-      return
-    }
-
     const payload: MeetingSettingsUpdate =
       dateMode === "range"
         ? {
@@ -125,7 +116,6 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
             candidate_dates: null,
             duration_minutes: duration,
             location_type: locationType,
-            offline_buffer_minutes: locationType === "online" ? 0 : bufferMin,
             time_window_start: timeStart,
             time_window_end: timeEnd,
             include_weekends: includeWeekends,
@@ -137,7 +127,6 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
             candidate_dates: pickedDates,
             duration_minutes: duration,
             location_type: locationType,
-            offline_buffer_minutes: locationType === "online" ? 0 : bufferMin,
             time_window_start: timeStart,
             time_window_end: timeEnd,
             include_weekends: includeWeekends,
@@ -223,11 +212,7 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
                       type="button"
                       role="radio"
                       aria-checked={active}
-                      onClick={() => {
-                        setLocationType(opt.value)
-                        if (opt.value === "online") setBufferMin(0)
-                        else if (bufferMin === 0) setBufferMin(60)
-                      }}
+                      onClick={() => setLocationType(opt.value)}
                       className={cn(
                         "rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
                         active
@@ -242,25 +227,6 @@ export function EditMeetingDialog({ open, onOpenChange, slug, meeting, onSaved }
               </div>
             </fieldset>
           </div>
-
-          {showBuffer ? (
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="edit-buffer">이동 버퍼</Label>
-              <Select
-                id="edit-buffer"
-                value={bufferMin}
-                onChange={(e) => setBufferMin(Number(e.target.value))}
-              >
-                <option value={30}>30분</option>
-                <option value={60}>60분</option>
-                <option value={90}>90분</option>
-                <option value={120}>120분</option>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                후보 시간 앞뒤로 비워둘 시간입니다. 오프라인/상관없음 일 때만 적용됩니다.
-              </p>
-            </div>
-          ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="flex flex-col gap-2">

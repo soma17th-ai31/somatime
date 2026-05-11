@@ -15,7 +15,6 @@ export interface MeetingCreateRequest {
   candidate_dates: string[] | null
   duration_minutes: number
   location_type: LocationType
-  offline_buffer_minutes: number
   time_window_start: string // HH:MM
   time_window_end: string // HH:MM
   include_weekends: boolean
@@ -39,7 +38,6 @@ export interface MeetingSettingsUpdate {
   candidate_dates: string[] | null
   duration_minutes: number
   location_type: LocationType
-  offline_buffer_minutes: number
   time_window_start: string
   time_window_end: string
   include_weekends: boolean
@@ -63,7 +61,6 @@ export interface MeetingDetail {
   required_nicknames?: string[]
   is_ready_to_calculate: boolean
   location_type: LocationType
-  offline_buffer_minutes: number
   time_window_start: string
   time_window_end: string
   include_weekends: boolean
@@ -76,7 +73,7 @@ export interface MeetingDetail {
   created_at?: string
   // #32 — 회의 자동 삭제 예정 시각 (ISO 8601 with KST offset). 미지원 응답에선 omit.
   expires_at?: string
-  // #13 — 본인 참여자의 개인 이동 버퍼(분). null = 회의 기본값(offline_buffer_minutes) 사용.
+  // #13 — 본인 참여자의 개인 이동 버퍼(분). null = 시스템 기본값(60분) 사용.
   // anonymous 호출 시 undefined.
   my_buffer_minutes?: number | null
 }

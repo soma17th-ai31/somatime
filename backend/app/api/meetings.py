@@ -94,7 +94,6 @@ def create_meeting(
             candidate_dates=candidate_dates_iso,
             duration_minutes=payload.duration_minutes,
             location_type=payload.location_type.value,
-            offline_buffer_minutes=payload.offline_buffer_minutes,
             time_window_start=payload.time_window_start,
             time_window_end=payload.time_window_end,
             include_weekends=payload.include_weekends,
@@ -213,7 +212,6 @@ def get_meeting(
         required_nicknames=required_names,
         is_ready_to_calculate=submitted >= 1,
         location_type=meeting.location_type,
-        offline_buffer_minutes=meeting.offline_buffer_minutes,
         time_window_start=meeting.time_window_start,
         time_window_end=meeting.time_window_end,
         include_weekends=meeting.include_weekends,
@@ -260,7 +258,6 @@ def update_meeting_settings(
     )
     meeting.duration_minutes = payload.duration_minutes
     meeting.location_type = payload.location_type.value
-    meeting.offline_buffer_minutes = payload.offline_buffer_minutes
     meeting.time_window_start = payload.time_window_start
     meeting.time_window_end = payload.time_window_end
     meeting.include_weekends = payload.include_weekends

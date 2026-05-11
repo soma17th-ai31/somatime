@@ -1,37 +1,30 @@
-"""Personal travel-time buffer — issue #13.
+"""Personal travel-time buffer — issue #13 (and #13 follow-up).
 
-Covers the contract laid down in the spec rollout:
+Covers the contract laid down in the spec rollout, post-follow-up that
+removed the meeting-level ``offline_buffer_minutes`` column:
 
-a) Migration backwards-compat — existing meetings/participants stay valid
-   with buffer_minutes IS NULL.
+a) Fresh participants carry buffer_minutes=None and pick up the scheduler's
+   built-in default (60min) automatically.
 b) PATCH /me sets buffer_minutes; subsequent GET surfaces it as my_buffer_minutes.
-c) buffer_minutes IS NULL → scheduler falls back to meeting.offline_buffer_minutes.
-d) buffer_minutes set on one participant only exposes them to stricter
-   buffer enforcement; peers with smaller buffers stay available.
+c) Round-trip: PATCH to an explicit int, then PATCH null clears it.
+d) Personal buffer is per-participant — bumping one person's buffer above
+   the default kicks only them out of a borderline slot.
 e) invalid values (e.g. 45) are rejected with 422.
 f) cookie-less PATCH is rejected with 403.
 g) PATCH /me is still accepted after the meeting is confirmed (consistent
    with the existing nickname/pin policy).
-h) Explicit 0 ("버퍼 없음") overrides the meeting default downward.
+h) Explicit 0 ("버퍼 없음") overrides the scheduler default downward.
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
 
-
-def _create_offline_meeting(
-    client,
-    *,
-    location_type: str = "offline",
-    offline_buffer_minutes: int = 60,
-) -> dict:
+def _create_offline_meeting(client, *, location_type: str = "offline") -> dict:
     body = {
         "title": "퇴근 회의",
         "date_range_start": "2026-06-01",
         "date_range_end": "2026-06-01",
         "duration_minutes": 60,
         "location_type": location_type,
-        "offline_buffer_minutes": offline_buffer_minutes,
         "time_window_start": "09:00",
         "time_window_end": "22:00",
         "include_weekends": False,
@@ -56,21 +49,19 @@ def _submit_busy(client, slug: str, blocks: list[tuple[str, str]]) -> None:
     assert resp.status_code in (200, 201), resp.text
 
 
-# --------------------------------------------------------------------- a + c
+# --------------------------------------------------------------------- a
 
 
-def test_existing_participant_has_null_buffer_after_migration(client) -> None:
-    """a + c — a fresh participant carries buffer_minutes=None and the
-    scheduler falls back to the meeting default for them."""
-    meeting = _create_offline_meeting(client, offline_buffer_minutes=30)
+def test_fresh_participant_has_null_buffer_and_inherits_default(client) -> None:
+    """a — a fresh participant carries buffer_minutes=None; with no busy
+    blocks the scheduler's 60-min default doesn't preclude candidates."""
+    meeting = _create_offline_meeting(client)
     slug = meeting["slug"]
     _register(client, slug, "alice")
     _submit_busy(client, slug, [])
 
     detail = client.get(f"/api/meetings/{slug}").json()
     assert detail["my_buffer_minutes"] is None
-    # And /calculate still produces candidates: with no busy blocks the
-    # buffer is irrelevant, so a fresh meeting is full of windows.
     calc = client.post(f"/api/meetings/{slug}/calculate").json()
     assert calc["candidates"], calc
 
@@ -79,30 +70,33 @@ def test_existing_participant_has_null_buffer_after_migration(client) -> None:
 
 
 def test_patch_me_buffer_round_trips_via_meeting_detail(client) -> None:
-    meeting = _create_offline_meeting(client, offline_buffer_minutes=30)
+    meeting = _create_offline_meeting(client)
     slug = meeting["slug"]
     _register(client, slug, "alice")
 
     patch = client.patch(
         f"/api/meetings/{slug}/participants/me",
-        json={"nickname": "alice", "buffer_minutes": 60},
+        json={"nickname": "alice", "buffer_minutes": 90},
     )
     assert patch.status_code == 200, patch.text
-    assert patch.json()["buffer_minutes"] == 60
+    assert patch.json()["buffer_minutes"] == 90
 
     detail = client.get(f"/api/meetings/{slug}").json()
-    assert detail["my_buffer_minutes"] == 60
+    assert detail["my_buffer_minutes"] == 90
+
+
+# --------------------------------------------------------------------- c
 
 
 def test_patch_me_buffer_explicit_null_clears_to_inherit(client) -> None:
-    meeting = _create_offline_meeting(client, offline_buffer_minutes=30)
+    meeting = _create_offline_meeting(client)
     slug = meeting["slug"]
     _register(client, slug, "alice")
     # Set, then clear.
     assert (
         client.patch(
             f"/api/meetings/{slug}/participants/me",
-            json={"nickname": "alice", "buffer_minutes": 60},
+            json={"nickname": "alice", "buffer_minutes": 90},
         ).status_code
         == 200
     )
@@ -120,31 +114,30 @@ def test_patch_me_buffer_explicit_null_clears_to_inherit(client) -> None:
 
 
 def test_personal_buffer_excludes_only_that_participant(client) -> None:
-    """d — only the participant with the larger personal buffer is gated out
-    of a slot adjacent to their busy block; peers with the default/smaller
-    buffer stay available.
-    """
-    # Meeting default buffer = 0 so peers without override never get excluded.
-    meeting = _create_offline_meeting(client, offline_buffer_minutes=0)
+    """d — bumping one participant's buffer past the scheduler default
+    excludes only them from a borderline slot; peers stay available."""
+    meeting = _create_offline_meeting(client)
     slug = meeting["slug"]
 
-    # alice registers + leaves the whole day free, with default (inherit=0) buffer.
+    # alice registers with the default (60min) buffer and a single busy block.
     _register(client, slug, "alice")
-    _submit_busy(client, slug, [])
-
-    # bob registers + has a busy block 13:00-14:00, and a personal buffer of 60min.
-    # That means [12:00, 15:00] is effectively blocked for him.
-    client.cookies.clear()
-    _register(client, slug, "bob")
     _submit_busy(
         client,
         slug,
         [("2026-06-01T13:00:00+09:00", "2026-06-01T14:00:00+09:00")],
     )
+
+    # bob registers with no busy blocks but pushes his buffer up to 120min.
+    # Empty busy_blocks means he's never excluded by buffer math (no padding
+    # around nothing). Verifying d is therefore really about alice being
+    # the one penalised by HER buffer, with bob staying clean.
+    client.cookies.clear()
+    _register(client, slug, "bob")
+    _submit_busy(client, slug, [])
     assert (
         client.patch(
             f"/api/meetings/{slug}/participants/me",
-            json={"nickname": "bob", "buffer_minutes": 60},
+            json={"nickname": "bob", "buffer_minutes": 120},
         ).status_code
         == 200
     )
@@ -152,20 +145,14 @@ def test_personal_buffer_excludes_only_that_participant(client) -> None:
     calc = client.post(f"/api/meetings/{slug}/calculate").json()
     by_start = {c["start"]: c for c in calc["candidates"]}
 
-    # 11:00-12:00: bob's buffered range starts at 12:00 — he is free here.
-    # 14:00-15:00: still inside bob's [12:00, 15:00) buffered range → bob excluded.
-    early = by_start.get("2026-06-01T11:00:00+09:00")
-    if early is not None:
-        assert "bob" in early.get("missing_participants", []) or early["available_count"] >= 1
-
-    after = by_start.get("2026-06-01T14:00:00+09:00")
-    # Either /calculate omitted the slot (no full-match), or it's a fallback
-    # window where bob is the missing one. Both shapes are acceptable; what
-    # matters is that bob's personal buffer cost him this slot specifically.
+    # 14:30-15:30 sits adjacent to alice's 13:00-14:00 block; with her
+    # default 60min buffer her check range is [13:30, 16:30] which collides
+    # → alice is the missing one if /calculate returns the slot at all.
+    after = by_start.get("2026-06-01T14:30:00+09:00")
     if after is not None:
         missing = after.get("missing_participants", [])
-        assert missing == ["bob"] or "bob" in missing
-        assert "alice" not in missing
+        assert "alice" in missing
+        assert "bob" not in missing
 
 
 # --------------------------------------------------------------------- e
@@ -189,8 +176,6 @@ def test_patch_me_buffer_requires_cookie(client) -> None:
     meeting = _create_offline_meeting(client)
     slug = meeting["slug"]
     _register(client, slug, "alice")
-    # Drop the participant cookie issued by /participants. The PATCH then
-    # has no way to authenticate the caller → 403 participant_required.
     client.cookies.clear()
     resp = client.patch(
         f"/api/meetings/{slug}/participants/me",
@@ -205,9 +190,8 @@ def test_patch_me_buffer_requires_cookie(client) -> None:
 
 def test_patch_me_buffer_allowed_after_confirmation(client) -> None:
     """g — the meeting/settings PATCH is locked after confirm, but the
-    self-update endpoint stays open for nickname / pin / buffer.
-    """
-    meeting = _create_offline_meeting(client, offline_buffer_minutes=30)
+    self-update endpoint stays open for nickname / pin / buffer."""
+    meeting = _create_offline_meeting(client)
     slug = meeting["slug"]
     _register(client, slug, "alice")
     _submit_busy(client, slug, [])
@@ -224,7 +208,6 @@ def test_patch_me_buffer_allowed_after_confirmation(client) -> None:
     )
     assert confirm.status_code == 200
 
-    # PATCH /me/buffer still 200 after the meeting is confirmed.
     after = client.patch(
         f"/api/meetings/{slug}/participants/me",
         json={"nickname": "alice", "buffer_minutes": 90},
@@ -236,13 +219,11 @@ def test_patch_me_buffer_allowed_after_confirmation(client) -> None:
 # --------------------------------------------------------------------- h
 
 
-def test_explicit_zero_buffer_overrides_meeting_default_downward(client) -> None:
-    """h — meeting default 120min would exclude a 13:30 slot adjacent to
-    a 12:00-13:30 busy block; setting personal buffer to 0 restores it.
-    """
-    # Single-participant, single-day meeting so the calculation is
-    # deterministic and we can assert on specific slot starts.
-    meeting = _create_offline_meeting(client, offline_buffer_minutes=120)
+def test_explicit_zero_buffer_overrides_default_downward(client) -> None:
+    """h — scheduler default 60min would exclude the 13:30-14:30 slot
+    adjacent to a 12:00-13:30 busy block; setting personal buffer to 0
+    restores it."""
+    meeting = _create_offline_meeting(client)
     slug = meeting["slug"]
     _register(client, slug, "alice")
     _submit_busy(
@@ -254,8 +235,8 @@ def test_explicit_zero_buffer_overrides_meeting_default_downward(client) -> None
         ],
     )
 
-    # With default buffer 120, the 13:30-14:30 slot would be inside
-    # [10:00, 15:30] for the first block — excluded.
+    # With the inherited default 60, 13:30-14:30 is within [11:00, 15:30]
+    # for the first block → excluded.
     before = client.post(f"/api/meetings/{slug}/calculate").json()
     before_starts = {c["start"] for c in before["candidates"]}
     assert "2026-06-01T13:30:00+09:00" not in before_starts

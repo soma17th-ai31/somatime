@@ -28,7 +28,7 @@ from app.services.scheduler import (
 def _make_meeting(
     *,
     location: str = "offline",
-    buffer: int = 30,
+    buffer: int = 30,  # noqa: ARG001 — kept for call-site compat, see _participant
     duration: int = 60,
     date_mode: str = "range",
     start_date: date = date(2026, 5, 12),
@@ -40,7 +40,11 @@ def _make_meeting(
     target: int = 1,  # noqa: ARG001 — accepted for back-compat
 ) -> Meeting:
     # v3.1: participant_count column dropped; scheduler is unaffected.
-    del target
+    # #13 follow-up: meeting-level offline_buffer_minutes column was dropped
+    # in favour of per-participant buffer_minutes. The legacy `buffer` kw
+    # remains so existing tests don't need to rewire — they now pass the same
+    # value through to `_participant(..., buffer_minutes=...)` instead.
+    del target, buffer
     return Meeting(
         slug="abc12345",
         title="meeting",
@@ -50,7 +54,6 @@ def _make_meeting(
         candidate_dates=candidate_dates,
         duration_minutes=duration,
         location_type=location,
-        offline_buffer_minutes=buffer,
         time_window_start=window_start,
         time_window_end=window_end,
         include_weekends=include_weekends,
@@ -58,11 +61,14 @@ def _make_meeting(
     )
 
 
-def _participant(pid: int, nickname: str) -> Participant:
+def _participant(
+    pid: int, nickname: str, *, buffer_minutes: int | None = None
+) -> Participant:
     p = Participant(
         nickname=nickname,
         token=f"tok-{pid}".ljust(32, "x"),
         source_type="manual",
+        buffer_minutes=buffer_minutes,
         created_at=datetime(2026, 5, 4),
     )
     p.id = pid
@@ -80,8 +86,8 @@ def _block(pid: int, start: datetime, end: datetime) -> BusyBlock:
 
 
 def test_buffer_30_excludes_adjacent_slot() -> None:
-    meeting = _make_meeting(location="offline", buffer=30, duration=60)
-    parts = [_participant(1, "a")]
+    meeting = _make_meeting(location="offline", duration=60)
+    parts = [_participant(1, "a", buffer_minutes=30)]
     busy = {
         1: [
             _block(1, datetime(2026, 5, 12, 12, 0), datetime(2026, 5, 12, 13, 30)),
@@ -95,8 +101,8 @@ def test_buffer_30_excludes_adjacent_slot() -> None:
 
 
 def test_buffer_60_excludes_a_wider_slot() -> None:
-    meeting = _make_meeting(location="offline", buffer=60, duration=60)
-    parts = [_participant(1, "a")]
+    meeting = _make_meeting(location="offline", duration=60)
+    parts = [_participant(1, "a", buffer_minutes=60)]
     busy = {
         1: [
             _block(1, datetime(2026, 5, 12, 12, 0), datetime(2026, 5, 12, 13, 30)),
@@ -112,8 +118,8 @@ def test_buffer_60_excludes_a_wider_slot() -> None:
 
 
 def test_buffer_120_excludes_a_much_wider_slot() -> None:
-    meeting = _make_meeting(location="offline", buffer=120, duration=60)
-    parts = [_participant(1, "a")]
+    meeting = _make_meeting(location="offline", duration=60)
+    parts = [_participant(1, "a", buffer_minutes=120)]
     busy = {
         1: [_block(1, datetime(2026, 5, 12, 12, 0), datetime(2026, 5, 12, 13, 0))]
     }
@@ -132,9 +138,9 @@ def test_buffer_120_excludes_a_much_wider_slot() -> None:
 
 
 def test_any_location_applies_buffer_v3() -> None:
-    """v3 (Q8): location=any now applies offline_buffer_minutes (was buffer=0 in v2)."""
-    meeting = _make_meeting(location="any", buffer=30, duration=60)
-    parts = [_participant(1, "a")]
+    """v3 (Q8): location=any now applies the personal buffer (was buffer=0 in v2)."""
+    meeting = _make_meeting(location="any", duration=60)
+    parts = [_participant(1, "a", buffer_minutes=30)]
     busy = {
         1: [
             _block(1, datetime(2026, 5, 12, 12, 0), datetime(2026, 5, 12, 13, 30)),
@@ -147,8 +153,8 @@ def test_any_location_applies_buffer_v3() -> None:
 
 
 def test_online_location_ignores_buffer() -> None:
-    meeting = _make_meeting(location="online", buffer=120, duration=60)
-    parts = [_participant(1, "a")]
+    meeting = _make_meeting(location="online", duration=60)
+    parts = [_participant(1, "a", buffer_minutes=120)]
     busy = {
         1: [
             _block(1, datetime(2026, 5, 12, 12, 0), datetime(2026, 5, 12, 13, 30)),
@@ -157,7 +163,7 @@ def test_online_location_ignores_buffer() -> None:
     }
     windows = generate_candidate_windows(meeting, busy, participants=parts)
     starts = {w.start for w in windows}
-    # online: buffer always 0 regardless of offline_buffer_minutes.
+    # online: buffer always 0 even with a personal buffer set.
     assert datetime(2026, 5, 12, 13, 30) in starts
 
 

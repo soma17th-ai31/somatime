@@ -124,7 +124,7 @@ export const api = {
   //   - is_required: true/false → set accordingly
   // #13 — buffer_minutes field semantics:
   //   - omit field    → leave existing value unchanged
-  //   - null          → clear, fall back to meeting.offline_buffer_minutes
+  //   - null          → clear, fall back to system default (60 min)
   //   - 0/30/60/90/120 → explicit per-participant value
   updateSelf(
     slug: string,

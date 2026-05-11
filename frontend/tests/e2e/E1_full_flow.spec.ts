@@ -174,16 +174,11 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   // duration: 60min — participant_count input was retired in v3.1.
   await organizer.locator("#duration_minutes").selectOption("60")
 
-  // Step 3 — segmented location control. Touch each option, finally settle
-  // on offline so the buffer Select is exercised.
+  // Step 3 — segmented location control. v3 follow-up: 회의 전체 buffer 가
+  // 제거되어 location 변경만 exercise. 개인 buffer 는 회의 페이지에서 따로 처리.
   await organizer.locator('[data-testid="location-online"]').click()
-  // online hides the buffer dropdown
-  await expect(organizer.locator('[data-testid="buffer-select"]')).toHaveCount(0)
   await organizer.locator('[data-testid="location-any"]').click()
-  await expect(organizer.locator('[data-testid="buffer-select"]')).toBeVisible()
   await organizer.locator('[data-testid="location-offline"]').click()
-  await expect(organizer.locator('[data-testid="buffer-select"]')).toBeVisible()
-  await organizer.locator('[data-testid="buffer-select"]').selectOption("60")
 
   // Submit
   await organizer.locator('[data-testid="create-submit"]').click()

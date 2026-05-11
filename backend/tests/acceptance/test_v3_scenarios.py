@@ -30,17 +30,29 @@ def _create(client, **overrides) -> dict:
         "date_range_end": "2026-05-15",
         "duration_minutes": 60,
         "location_type": "online",
-        "offline_buffer_minutes": 30,
         "time_window_start": "09:00",
         "time_window_end": "22:00",
         "include_weekends": False,
     }
     # v3.1: participant_count was retired. Drop legacy overrides.
     overrides.pop("participant_count", None)
+    # #13 follow-up: meeting-level offline_buffer_minutes was dropped. Tests
+    # that used to pass `offline_buffer_minutes=N` on creation now PATCH the
+    # registering participant after the fact.
+    overrides.pop("offline_buffer_minutes", None)
     body.update(overrides)
     resp = client.post("/api/meetings", json=body)
     assert resp.status_code == 201, resp.text
     return resp.json()
+
+
+def _set_my_buffer(client, slug: str, nickname: str, buffer_minutes: int) -> None:
+    """Issue #13 helper — set the calling participant's personal buffer."""
+    resp = client.patch(
+        f"/api/meetings/{slug}/participants/me",
+        json={"nickname": nickname, "buffer_minutes": buffer_minutes},
+    )
+    assert resp.status_code == 200, resp.text
 
 
 def _register(client, slug: str, nickname: str, pin: str | None = None) -> dict:
@@ -136,12 +148,11 @@ def test_S2_buffer_30_excludes_borderline(client) -> None:
     data = _create(
         client,
         location_type="offline",
-        offline_buffer_minutes=30,
-        participant_count=1,
         date_range_start="2026-05-12",
         date_range_end="2026-05-12",
     )
     _register(client, data["slug"], "alice")
+    _set_my_buffer(client, data["slug"], "alice", 30)
     _submit_manual(client, data["slug"], busy)
     calc = client.post(f"/api/meetings/{data['slug']}/calculate")
     assert calc.status_code == 200
@@ -157,12 +168,11 @@ def test_S2_buffer_60_excludes_a_wider_zone(client) -> None:
     data = _create(
         client,
         location_type="offline",
-        offline_buffer_minutes=60,
-        participant_count=1,
         date_range_start="2026-05-12",
         date_range_end="2026-05-12",
     )
     _register(client, data["slug"], "alice")
+    _set_my_buffer(client, data["slug"], "alice", 60)
     _submit_manual(client, data["slug"], busy)
     calc = client.post(f"/api/meetings/{data['slug']}/calculate")
     starts = {c["start"] for c in calc.json()["candidates"]}
@@ -178,12 +188,11 @@ def test_S2_buffer_120_excludes_even_wider(client) -> None:
     data = _create(
         client,
         location_type="offline",
-        offline_buffer_minutes=120,
-        participant_count=1,
         date_range_start="2026-05-12",
         date_range_end="2026-05-12",
     )
     _register(client, data["slug"], "alice")
+    _set_my_buffer(client, data["slug"], "alice", 120)
     _submit_manual(client, data["slug"], busy)
     calc = client.post(f"/api/meetings/{data['slug']}/calculate")
     starts = {c["start"] for c in calc.json()["candidates"]}
@@ -191,7 +200,7 @@ def test_S2_buffer_120_excludes_even_wider(client) -> None:
 
 
 def test_S2_any_location_applies_buffer_v3(client) -> None:
-    """v3 (Q8): any-location uses offline_buffer_minutes."""
+    """v3 (Q8): any-location applies the personal buffer."""
     busy = [
         ("2026-05-12T12:00:00+09:00", "2026-05-12T13:30:00+09:00"),
         ("2026-05-12T14:30:00+09:00", "2026-05-12T16:00:00+09:00"),
@@ -199,12 +208,11 @@ def test_S2_any_location_applies_buffer_v3(client) -> None:
     data = _create(
         client,
         location_type="any",
-        offline_buffer_minutes=30,
-        participant_count=1,
         date_range_start="2026-05-12",
         date_range_end="2026-05-12",
     )
     _register(client, data["slug"], "alice")
+    _set_my_buffer(client, data["slug"], "alice", 30)
     _submit_manual(client, data["slug"], busy)
     calc = client.post(f"/api/meetings/{data['slug']}/calculate")
     starts = {c["start"] for c in calc.json()["candidates"]}
@@ -219,12 +227,12 @@ def test_S2_online_ignores_buffer(client) -> None:
     data = _create(
         client,
         location_type="online",
-        offline_buffer_minutes=120,  # would exclude lots — but online ignores it.
-        participant_count=1,
         date_range_start="2026-05-12",
         date_range_end="2026-05-12",
     )
     _register(client, data["slug"], "alice")
+    # Personal buffer 120 would exclude plenty — but online flattens to 0.
+    _set_my_buffer(client, data["slug"], "alice", 120)
     _submit_manual(client, data["slug"], busy)
     calc = client.post(f"/api/meetings/{data['slug']}/calculate")
     starts = {c["start"] for c in calc.json()["candidates"]}

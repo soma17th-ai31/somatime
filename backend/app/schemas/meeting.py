@@ -3,7 +3,7 @@
 v3 additions:
 - date_mode: "range" | "picked" (Q5)
 - candidate_dates: list of ISO date strings, picked mode only (Q5)
-- offline_buffer_minutes: 30 / 60 / 90 / 120 (Q8)
+- offline_buffer_minutes (Q8) — removed in #13 follow-up; per-participant only
 - submitted_count / is_ready_to_calculate (Q2)
 - share_url + confirmed_share_message in detail response (Q9)
 
@@ -35,9 +35,6 @@ class DateMode(str, Enum):
     picked = "picked"
 
 
-_ALLOWED_BUFFER_MINUTES = {0, 30, 60, 90, 120}
-
-
 class MeetingCreate(BaseModel):
     """Body of POST /api/meetings (v3)."""
 
@@ -48,7 +45,6 @@ class MeetingCreate(BaseModel):
     candidate_dates: Optional[List[date]] = None
     duration_minutes: int = Field(ge=30, le=24 * 60)
     location_type: LocationType
-    offline_buffer_minutes: int = 30
     time_window_start: time = Field(default=time(9, 0))
     time_window_end: time = Field(default=time(22, 0))
     include_weekends: bool = False
@@ -58,15 +54,6 @@ class MeetingCreate(BaseModel):
     def _duration_must_be_30_multiple(cls, v: int) -> int:
         if v % 30 != 0:
             raise ValueError("duration_minutes must be a multiple of 30")
-        return v
-
-    @field_validator("offline_buffer_minutes")
-    @classmethod
-    def _buffer_choice(cls, v: int) -> int:
-        if v not in _ALLOWED_BUFFER_MINUTES:
-            raise ValueError(
-                "offline_buffer_minutes must be one of 0/30/60/90/120"
-            )
         return v
 
     @model_validator(mode="after")
@@ -115,7 +102,6 @@ class MeetingSettingsUpdate(BaseModel):
     candidate_dates: Optional[List[date]] = None
     duration_minutes: int = Field(ge=30, le=24 * 60)
     location_type: LocationType
-    offline_buffer_minutes: int
     time_window_start: time
     time_window_end: time
     include_weekends: bool
@@ -125,15 +111,6 @@ class MeetingSettingsUpdate(BaseModel):
     def _duration_must_be_30_multiple(cls, v: int) -> int:
         if v % 30 != 0:
             raise ValueError("duration_minutes must be a multiple of 30")
-        return v
-
-    @field_validator("offline_buffer_minutes")
-    @classmethod
-    def _buffer_choice(cls, v: int) -> int:
-        if v not in _ALLOWED_BUFFER_MINUTES:
-            raise ValueError(
-                "offline_buffer_minutes must be one of 0/30/60/90/120"
-            )
         return v
 
     @model_validator(mode="after")
@@ -193,7 +170,6 @@ class MeetingDetail(BaseModel):
     required_nicknames: List[str] = Field(default_factory=list)
     is_ready_to_calculate: bool
     location_type: LocationType
-    offline_buffer_minutes: int
     time_window_start: time
     time_window_end: time
     include_weekends: bool
@@ -209,6 +185,6 @@ class MeetingDetail(BaseModel):
     my_busy_blocks: Optional[List[ConfirmedSlotInfo]] = None
     # Issue #13 — calling participant's personal buffer override.
     # None when caller has no cookie OR the participant left it as
-    # "inherit the meeting's offline_buffer_minutes".
+    # "use the scheduler's default offline buffer".
     my_buffer_minutes: Optional[int] = None
     created_at: datetime
