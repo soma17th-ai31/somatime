@@ -117,10 +117,16 @@ def recommend(
 
     last_error: str = ""
     network_error_attempts = 0
+    sorted_required = sorted(required_nicks)
 
     for attempt in range(1, MAX_LLM_ATTEMPTS + 1):
         try:
-            llm_output = adapter.recommend(windows_for_llm, meeting, max_candidates=3)
+            llm_output = adapter.recommend(
+                windows_for_llm,
+                meeting,
+                max_candidates=3,
+                required_participants=sorted_required,
+            )
         except (CandidateValidationError, ValueError, json.JSONDecodeError) as exc:
             # validation/parse fault — eligible for retry
             last_error = str(exc)

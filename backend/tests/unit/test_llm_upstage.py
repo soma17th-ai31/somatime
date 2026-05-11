@@ -83,7 +83,12 @@ def test_build_payload_contains_no_event_titles(monkeypatch) -> None:
 def test_payload_top_level_keys_locked(monkeypatch) -> None:
     adapter = _instantiate_adapter(monkeypatch)
     payload = adapter.build_recommendation_payload(_windows(), _meeting(), 3)
-    assert set(payload.keys()) == {"meeting", "rules", "candidate_windows"}
+    assert set(payload.keys()) == {
+        "meeting",
+        "rules",
+        "candidate_windows",
+        "required_participants",
+    }
 
 
 def test_payload_meeting_keys_locked(monkeypatch) -> None:

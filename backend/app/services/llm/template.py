@@ -24,9 +24,14 @@ class TemplateAdapter(LLMAdapter):
         candidate_windows: "Sequence[CandidateWindow]",
         meeting: Meeting,
         max_candidates: int = 3,
+        required_participants: Sequence[str] = (),
     ) -> dict:
-        # Build the payload to assert privacy invariants even on the no-op path.
-        _ = self.build_recommendation_payload(candidate_windows, meeting, max_candidates)
+        # Build the payload to assert privacy invariants even on the no-op
+        # path. Threading required_participants keeps the privacy spy +
+        # payload-keys assertions accurate (issue #38).
+        _ = self.build_recommendation_payload(
+            candidate_windows, meeting, max_candidates, required_participants
+        )
 
         chosen = list(candidate_windows[:max_candidates])
         return {

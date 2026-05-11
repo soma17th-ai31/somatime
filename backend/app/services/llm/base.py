@@ -37,8 +37,15 @@ class LLMAdapter(ABC):
         candidate_windows: "Sequence[CandidateWindow]",
         meeting: Meeting,
         max_candidates: int = 3,
+        required_participants: Sequence[str] = (),
     ) -> dict:
         """One-call recommendation.
+
+        ``required_participants`` carries the meeting's mandatory attendee
+        nicknames (issue #38). Adapters surface this list to the model so
+        the LLM can both double-gate the deterministic filter and shape its
+        reason copy. Order is the caller's responsibility — recommend.py
+        sorts the set before passing it through.
 
         Returns:
             {
@@ -61,10 +68,17 @@ class LLMAdapter(ABC):
         candidate_windows: "Sequence[CandidateWindow]",
         meeting: Meeting,
         max_candidates: int = 3,
+        required_participants: Sequence[str] = (),
     ) -> dict:
         """Privacy-safe payload. ONLY the fields below may be sent.
 
         Asserted by the upstage privacy spy + acceptance test S11.
+
+        Issue #38 — ``required_participants`` is included as a top-level
+        list so the LLM knows which nicknames must appear in
+        ``available_participants`` for a candidate to be valid. The list
+        is always present (empty list when nobody is required) so the
+        model can rely on the key existing.
         """
         return {
             "meeting": {
@@ -76,6 +90,7 @@ class LLMAdapter(ABC):
                 "slot_unit_minutes": 30,
                 "max_candidates": max_candidates,
             },
+            "required_participants": list(required_participants),
             "candidate_windows": [
                 {
                     "start": w.start.isoformat(),

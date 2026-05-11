@@ -223,11 +223,37 @@ def test_template_output_does_not_leak_private_event_words() -> None:
         assert word not in out["summary"]
 
 
+def test_recommendation_payload_includes_required_participants_when_supplied() -> None:
+    """Issue #38 — explicit nicknames pass through to the payload, in order."""
+    adapter = TemplateAdapter()
+    m = _meeting()
+    payload = adapter.build_recommendation_payload(
+        _windows(),
+        m,
+        max_candidates=3,
+        required_participants=["alice", "bob"],
+    )
+    assert payload["required_participants"] == ["alice", "bob"]
+
+
+def test_recommendation_payload_required_participants_empty_list_when_none() -> None:
+    """Issue #38 — key is always present, even when nobody is required."""
+    adapter = TemplateAdapter()
+    m = _meeting()
+    payload = adapter.build_recommendation_payload(_windows(), m, max_candidates=3)
+    assert payload["required_participants"] == []
+
+
 def test_recommendation_payload_contains_only_safe_fields() -> None:
     adapter = TemplateAdapter()
     m = _meeting()
     payload = adapter.build_recommendation_payload(_windows(), m, max_candidates=3)
-    assert set(payload.keys()) == {"meeting", "rules", "candidate_windows"}
+    assert set(payload.keys()) == {
+        "meeting",
+        "rules",
+        "candidate_windows",
+        "required_participants",
+    }
     assert set(payload["meeting"].keys()) == {
         "title",
         "location_type",

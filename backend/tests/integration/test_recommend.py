@@ -81,7 +81,7 @@ def test_recommend_happy_path_one_llm_call(client) -> None:
     spy_calls = {"count": 0}
 
     class _MockAdapter:
-        def recommend(self, candidate_windows, meeting, max_candidates=3):
+        def recommend(self, candidate_windows, meeting, max_candidates=3, **kwargs):
             spy_calls["count"] += 1
             # v3.27 — _validate_llm_output enforces 2h+ spread between
             # candidates, so the mock picks windows that are at least 120min
@@ -147,7 +147,7 @@ def test_recommend_validation_failures_fall_back(client) -> None:
     spy_calls = {"count": 0}
 
     class _BadAdapter:
-        def recommend(self, candidate_windows, meeting, max_candidates=3):
+        def recommend(self, candidate_windows, meeting, max_candidates=3, **kwargs):
             spy_calls["count"] += 1
             # Bogus times that won't match any window.
             return {
@@ -197,7 +197,7 @@ def test_recommend_network_error_immediate_fallback(client) -> None:
     spy_calls = {"count": 0}
 
     class _NetworkBrokenAdapter:
-        def recommend(self, candidate_windows, meeting, max_candidates=3):
+        def recommend(self, candidate_windows, meeting, max_candidates=3, **kwargs):
             spy_calls["count"] += 1
             raise ConnectionError("upstream down")
 
@@ -244,3 +244,67 @@ def test_recommend_unblocked_after_first_submission(client) -> None:
 
     rec = client.post(f"/api/meetings/{slug}/recommend")
     assert rec.status_code == 200, rec.text
+
+
+def test_recommend_passes_required_participants_to_adapter(client) -> None:
+    """Issue #38 — adapter receives sorted required_participants kwarg."""
+    data = _create(client)
+    slug = data["slug"]
+
+    # bob registers first WITHOUT is_required.
+    bob_resp = client.post(
+        f"/api/meetings/{slug}/participants",
+        json={"nickname": "bob", "buffer_minutes": 60},
+    )
+    assert bob_resp.status_code in (200, 201)
+    client.post(
+        f"/api/meetings/{slug}/availability/manual",
+        json={"busy_blocks": []},
+    )
+
+    # alice + charlie register WITH is_required=True so we can assert the
+    # adapter sees a sorted list (alice, charlie) — not registration order.
+    client.cookies.clear()
+    client.post(
+        f"/api/meetings/{slug}/participants",
+        json={"nickname": "charlie", "buffer_minutes": 60, "is_required": True},
+    )
+    client.post(
+        f"/api/meetings/{slug}/availability/manual",
+        json={"busy_blocks": []},
+    )
+
+    client.cookies.clear()
+    client.post(
+        f"/api/meetings/{slug}/participants",
+        json={"nickname": "alice", "buffer_minutes": 60, "is_required": True},
+    )
+    client.post(
+        f"/api/meetings/{slug}/availability/manual",
+        json={"busy_blocks": []},
+    )
+
+    captured: dict = {}
+
+    class _CaptureAdapter:
+        def recommend(self, candidate_windows, meeting, max_candidates=3, **kwargs):
+            captured["required_participants"] = kwargs.get("required_participants")
+            first = candidate_windows[0]
+            return {
+                "summary": "ok",
+                "candidates": [
+                    {
+                        "start": first.start.isoformat(),
+                        "end": first.end.isoformat(),
+                        "reason": "필수 참여자가 모두 가능한 시간",
+                        "share_message_draft": "안내",
+                    }
+                ],
+            }
+
+    with patch("app.api.recommend.get_llm_adapter", return_value=_CaptureAdapter()):
+        rec = client.post(f"/api/meetings/{slug}/recommend")
+    assert rec.status_code == 200, rec.text
+    # Sorted lexicographically: alice < charlie. bob is NOT required and
+    # must not appear.
+    assert captured["required_participants"] == ["alice", "charlie"]
