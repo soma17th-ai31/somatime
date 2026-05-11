@@ -58,6 +58,7 @@ from app.services.scheduler import (
     deterministic_top_candidates,
     generate_candidate_windows,
 )
+from app.services.expiry import meeting_expires_at
 from app.services.timezones import from_kst_naive, now_kst_naive, to_kst_naive
 from app.services.tokens import generate_slug
 
@@ -132,6 +133,24 @@ def get_meeting(
     db: Session = Depends(get_db),
 ) -> MeetingDetail:
     settings = get_settings()
+
+    # Issue #32 — lazy cleanup. Catches the gap between container startup
+    # and the first hourly sweep in the lifespan loop. Cascade handles
+    # Participant + BusyBlock; after delete we return 404 so the client sees
+    # the same shape as any other missing meeting.
+    expires_at = meeting_expires_at(meeting)
+    if expires_at <= now_kst_naive():
+        db.delete(meeting)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "error_code": "meeting_not_found",
+                "message": "회의를 찾을 수 없습니다.",
+                "suggestion": "URL을 다시 확인해주세요.",
+            },
+        )
+
     submitted = count_submitted(db, meeting.id)
     submitted_names = list_submitted_nicknames(db, meeting.id)
     required_names = list_required_nicknames(db, meeting.id)
@@ -198,6 +217,7 @@ def get_meeting(
         time_window_end=meeting.time_window_end,
         include_weekends=meeting.include_weekends,
         share_url=f"{settings.APP_BASE_URL.rstrip('/')}/m/{meeting.slug}",
+        expires_at=from_kst_naive(expires_at),
         confirmed_slot=confirmed_info,
         confirmed_share_message=meeting.confirmed_share_message,
         my_busy_blocks=my_busy_blocks,

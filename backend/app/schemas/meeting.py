@@ -198,6 +198,10 @@ class MeetingDetail(BaseModel):
     time_window_end: time
     include_weekends: bool
     share_url: str
+    # Issue #32 — KST timestamp at/after which the room is auto-deleted.
+    # Computed server-side from the meeting's own date fields + grace period;
+    # FE can surface it as a "X일 후 자동 삭제" hint.
+    expires_at: datetime
     confirmed_slot: Optional[ConfirmedSlotInfo] = None
     confirmed_share_message: Optional[str] = None
     # v3.6: present (and possibly empty []) when caller has a participant cookie;
