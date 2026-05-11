@@ -13,7 +13,7 @@ Spec sections 4 / 7 / 7.1 are the source of truth for:
 
 v3 changes:
 - enumerate_search_dates(meeting) honors meeting.date_mode.
-- generate_candidate_windows(...) uses meeting.offline_buffer_minutes.
+- generate_candidate_windows(...) uses per-participant buffer_minutes.
 - "any" now applies the same buffer as "offline" (Q8 — v2->v3 reversal).
 - deterministic_top_candidates(...) is the unified ranker for /calculate
   AND /recommend's fallback path.
@@ -30,7 +30,13 @@ from app.db.models import BusyBlock, Meeting, Participant
 from app.schemas.candidate import Candidate
 
 SLOT_MINUTES = 30
-BUFFER_MINUTES = 30  # legacy default, kept for backward-compat tests
+# Default offline buffer applied when a participant hasn't set a personal
+# buffer of their own. Used to live on Meeting.offline_buffer_minutes — that
+# column was dropped (issue #13 follow-up: per-participant buffer only).
+DEFAULT_BUFFER_MINUTES = 60
+# Legacy alias retained for any external import paths; new code should use
+# DEFAULT_BUFFER_MINUTES.
+BUFFER_MINUTES = DEFAULT_BUFFER_MINUTES
 SPREAD_MIN_MINUTES = 120  # "2h+ apart" rule
 DEFAULT_MAX_WINDOWS = 40
 
@@ -116,7 +122,7 @@ def generate_candidate_windows(
     """Deterministic candidate windows for a meeting.
 
     Iterates the 30-min grid across enumerate_search_dates, applies
-    meeting.offline_buffer_minutes for offline AND any locations
+    per-participant buffer_minutes for offline AND any locations
     (online == buffer 0), and returns up to max_windows windows ordered
     by ranking (available_count desc, then earliest start).
 
@@ -361,18 +367,19 @@ def calculate_candidates(
 def _effective_buffer_minutes(
     meeting: Meeting, participant: Optional[Participant] = None
 ) -> int:
-    """Per-participant effective buffer (issue #13).
+    """Per-participant effective buffer (issue #13, follow-up).
 
+    The meeting-level ``offline_buffer_minutes`` column has been removed.
     Rules (in order):
       * online meeting → 0, regardless of personal override.
       * participant.buffer_minutes IS NOT NULL → that value (personal override).
-      * otherwise → meeting.offline_buffer_minutes (the meeting-level default).
+      * otherwise → DEFAULT_BUFFER_MINUTES (60).
     """
     if meeting.location_type == "online":
         return 0
     if participant is not None and participant.buffer_minutes is not None:
         return int(participant.buffer_minutes)
-    return int(getattr(meeting, "offline_buffer_minutes", None) or BUFFER_MINUTES)
+    return DEFAULT_BUFFER_MINUTES
 
 
 def _build_buffer_by_pid(

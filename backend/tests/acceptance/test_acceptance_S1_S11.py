@@ -52,7 +52,6 @@ def _create(client, **overrides) -> dict:
         "date_range_end": "2026-05-15",
         "duration_minutes": 60,
         "location_type": "online",
-        "offline_buffer_minutes": 30,
         "time_window_start": "09:00",
         "time_window_end": "22:00",
         "include_weekends": False,
@@ -91,7 +90,8 @@ def test_S1_happy_path(client) -> None:
     """v3 happy path. /confirm body includes share_message_draft from /recommend.
 
     Coverage:
-    - date_mode="range" + location_type="offline" + offline_buffer_minutes
+    - date_mode="range" + location_type="offline" (#13 follow-up: buffer
+      lives on participants now, the meeting-level column is gone)
     - 4/4 submitted -> /calculate returns deterministic candidates with
       reason=null and share_message_draft=null
     - /recommend returns source="llm" (or "deterministic_fallback" under
@@ -103,7 +103,6 @@ def test_S1_happy_path(client) -> None:
         client,
         participant_count=4,
         location_type="offline",
-        offline_buffer_minutes=60,
     )
     slug = data["slug"]
     assert len(slug) == 8
@@ -124,7 +123,7 @@ def test_S1_happy_path(client) -> None:
     assert detail["is_ready_to_calculate"] is True
     assert detail["date_mode"] == "range"
     assert detail["location_type"] == "offline"
-    assert detail["offline_buffer_minutes"] == 60
+    assert "offline_buffer_minutes" not in detail
 
     # /calculate is deterministic-only — reason / share_message_draft must be null.
     calc = client.post(f"/api/meetings/{slug}/calculate")

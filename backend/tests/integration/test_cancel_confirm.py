@@ -143,7 +143,6 @@ def test_cancel_confirm_unlocks_settings_patch(client) -> None:
         "candidate_dates": None,
         "duration_minutes": 60,
         "location_type": "online",
-        "offline_buffer_minutes": 30,
         "time_window_start": "09:00",
         "time_window_end": "22:00",
         "include_weekends": False,

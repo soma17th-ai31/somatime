@@ -46,10 +46,6 @@ const schema = z
       "30/60/90/120/150/180 중에서 선택하세요",
     ),
     location_type: z.enum(["online", "offline", "any"]),
-    offline_buffer_minutes: z.coerce
-      .number()
-      .int()
-      .refine((v) => [0, 30, 60, 90, 120].includes(v), "버퍼 값이 올바르지 않습니다"),
     time_window_start: z.string().regex(timeRegex, "HH:MM 형식으로 입력하세요"),
     time_window_end: z.string().regex(timeRegex, "HH:MM 형식으로 입력하세요"),
     include_weekends: z.boolean(),
@@ -109,7 +105,6 @@ const defaultValues: FormValues = {
   candidate_dates: null,
   duration_minutes: 60,
   location_type: "offline" satisfies LocationType,
-  offline_buffer_minutes: 60,
   time_window_start: "09:00",
   time_window_end: "22:00",
   // v3.21 — "주말도 포함" 체크박스 UI 가 제거되어 항상 true 로 시작합니다.
@@ -142,8 +137,6 @@ export default function CreateMeetingPage() {
   })
 
   const dateMode = watch("date_mode")
-  const locationType = watch("location_type")
-  const showBuffer = locationType !== "online"
 
   async function onSubmit(values: FormValues) {
     setSubmitting(true)
@@ -160,8 +153,6 @@ export default function CreateMeetingPage() {
               candidate_dates: null,
               duration_minutes: values.duration_minutes,
               location_type: values.location_type,
-              offline_buffer_minutes:
-                values.location_type === "online" ? 0 : values.offline_buffer_minutes,
               time_window_start: values.time_window_start,
               time_window_end: values.time_window_end,
               include_weekends: values.include_weekends,
@@ -174,8 +165,6 @@ export default function CreateMeetingPage() {
               candidate_dates: values.candidate_dates,
               duration_minutes: values.duration_minutes,
               location_type: values.location_type,
-              offline_buffer_minutes:
-                values.location_type === "online" ? 0 : values.offline_buffer_minutes,
               time_window_start: values.time_window_start,
               time_window_end: values.time_window_end,
               include_weekends: values.include_weekends,
@@ -333,14 +322,7 @@ export default function CreateMeetingPage() {
                               role="radio"
                               aria-checked={active}
                               data-testid={`location-${opt.value}`}
-                              onClick={() => {
-                                field.onChange(opt.value)
-                                if (opt.value === "online") {
-                                  setValue("offline_buffer_minutes", 0)
-                                } else if (watch("offline_buffer_minutes") === 0) {
-                                  setValue("offline_buffer_minutes", 60)
-                                }
-                              }}
+                              onClick={() => field.onChange(opt.value)}
                               className={cn(
                                 "rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
                                 active
@@ -359,31 +341,6 @@ export default function CreateMeetingPage() {
                     <p className="text-xs text-destructive">{errors.location_type.message}</p>
                   ) : null}
                 </fieldset>
-
-                {showBuffer ? (
-                  <div className="flex flex-col gap-2">
-                    <Label htmlFor="offline_buffer_minutes">이동 버퍼</Label>
-                    <Select
-                      id="offline_buffer_minutes"
-                      data-testid="buffer-select"
-                      {...register("offline_buffer_minutes")}
-                    >
-                      <option value={30}>30분</option>
-                      <option value={60}>60분</option>
-                      <option value={90}>90분</option>
-                      <option value={120}>120분</option>
-                    </Select>
-                    <p className="text-xs text-muted-foreground">
-                      후보 시간 앞뒤로 비워둘 시간입니다. 오프라인/상관없음 일 때만
-                      적용됩니다.
-                    </p>
-                    {errors.offline_buffer_minutes ? (
-                      <p className="text-xs text-destructive">
-                        {errors.offline_buffer_minutes.message}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
 
                 <div className="flex flex-col gap-2">
                   <Label htmlFor="time_window_start">시작 시간</Label>

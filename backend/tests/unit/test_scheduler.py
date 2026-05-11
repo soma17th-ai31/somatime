@@ -166,7 +166,9 @@ def test_any_location_applies_buffer_v3() -> None:
 
 
 def test_buffer_minutes_constant() -> None:
-    assert BUFFER_MINUTES == 30
+    # #13 follow-up — meeting-level offline_buffer_minutes was dropped.
+    # The fallback when a participant has no personal buffer is now 60min.
+    assert BUFFER_MINUTES == 60
     assert SLOT_MINUTES == 30
 
 

@@ -24,7 +24,8 @@ from app.services.llm.upstage import UpstageAdapter
 from app.services.scheduler import CandidateWindow
 
 
-def _meeting(buffer: int = 30) -> Meeting:
+def _meeting(buffer: int = 30) -> Meeting:  # noqa: ARG001 — kept for call-site compat
+    # #13 follow-up: meeting-level offline_buffer_minutes was dropped.
     return Meeting(
         slug="abc12345",
         title="팀 회의",
@@ -34,7 +35,6 @@ def _meeting(buffer: int = 30) -> Meeting:
         candidate_dates=None,
         duration_minutes=60,
         location_type="offline",
-        offline_buffer_minutes=buffer,
         time_window_start=time(9, 0),
         time_window_end=time(22, 0),
         include_weekends=False,
@@ -95,7 +95,6 @@ def test_payload_meeting_keys_locked(monkeypatch) -> None:
         "title",
         "location_type",
         "duration_minutes",
-        "offline_buffer_minutes",
     }
 
 

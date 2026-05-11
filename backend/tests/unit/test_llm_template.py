@@ -19,7 +19,6 @@ def _meeting() -> Meeting:
         candidate_dates=None,
         duration_minutes=60,
         location_type="online",
-        offline_buffer_minutes=30,
         time_window_start=time(9, 0),
         time_window_end=time(22, 0),
         include_weekends=False,
@@ -235,7 +234,6 @@ def test_recommendation_payload_contains_only_safe_fields() -> None:
         "title",
         "location_type",
         "duration_minutes",
-        "offline_buffer_minutes",
     }
     assert set(payload["rules"].keys()) == {"slot_unit_minutes", "max_candidates"}
     for window in payload["candidate_windows"]:

@@ -144,9 +144,6 @@ export function MeetingSummary({
             </dt>
             <dd className="mt-1 text-foreground">
               {LOCATION_LABEL[meeting.location_type]}
-              {meeting.location_type !== "online"
-                ? ` · 버퍼 ${meeting.offline_buffer_minutes}분`
-                : ""}
             </dd>
           </div>
           <div className="sm:col-span-2">

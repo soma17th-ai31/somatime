@@ -19,14 +19,15 @@ import { useToast } from "@/components/ui/toast"
 import { api } from "@/lib/api"
 import { ApiError, type LocationType } from "@/lib/types"
 
+// #13 follow-up — 회의 전체 buffer 제거 후, 미설정 시 사용되는 시스템 기본값 (분).
+const BUFFER_DEFAULT_MINUTES = 60
+
 interface Props {
   slug: string
   nickname: string
   isRequired: boolean
-  // #13 — 본인 개인 buffer (분). null = 회의 기본값 사용.
+  // #13 — 본인 개인 buffer (분). null = 시스템 기본값(60분) 사용.
   myBufferMinutes: number | null
-  // 회의 전체 default buffer (분). online 회의 시 0.
-  meetingBufferMinutes: number
   locationType: LocationType
   onRenamed: (newNickname: string) => void
   onSwitchUser: () => void
@@ -35,7 +36,7 @@ interface Props {
 
 const PIN_REGEX = /^\d{4}$/
 
-// "회의 기본값" sentinel — Select 의 빈 value.
+// "기본값" sentinel — Select 의 빈 value. (null 로 저장됨 → 시스템 기본 60분 사용.)
 const BUFFER_INHERIT = ""
 
 function bufferToFormValue(my: number | null): string {
@@ -53,7 +54,6 @@ export function CurrentParticipantCard({
   nickname,
   isRequired,
   myBufferMinutes,
-  meetingBufferMinutes,
   locationType,
   onRenamed,
   onSwitchUser,
@@ -70,7 +70,7 @@ export function CurrentParticipantCard({
   const [error, setError] = useState<string | null>(null)
 
   const showBuffer = locationType !== "online"
-  const effectiveBuffer = myBufferMinutes ?? meetingBufferMinutes
+  const effectiveBuffer = myBufferMinutes ?? BUFFER_DEFAULT_MINUTES
 
   // Keep the draft checkbox/buffer in sync with the latest server-known value when
   // not editing (e.g. another tab toggled it).
@@ -171,7 +171,7 @@ export function CurrentParticipantCard({
         "success",
       )
       if (bufferChanged) {
-        const effective = res.buffer_minutes ?? meetingBufferMinutes
+        const effective = res.buffer_minutes ?? BUFFER_DEFAULT_MINUTES
         toast(
           `버퍼가 ${effective}분으로 변경되었습니다. 다음 결과 계산부터 적용됩니다.`,
           "success",
@@ -323,7 +323,9 @@ export function CurrentParticipantCard({
             className="h-9 text-sm"
             data-testid="participant-buffer-select"
           >
-            <option value={BUFFER_INHERIT}>회의 기본값 사용 ({meetingBufferMinutes}분)</option>
+            <option value={BUFFER_INHERIT}>
+              기본값 사용 ({BUFFER_DEFAULT_MINUTES}분)
+            </option>
             <option value="0">0분 (버퍼 없음)</option>
             <option value="30">30분</option>
             <option value="60">60분</option>
@@ -331,8 +333,7 @@ export function CurrentParticipantCard({
             <option value="120">120분</option>
           </Select>
           <p className="text-xs text-muted-foreground">
-            본인의 이동시간 등을 반영해 후보 시간 앞뒤로 비워둘 시간입니다. 회의 기본값을
-            덮어씁니다.
+            본인의 이동시간 등을 반영해 후보 시간 앞뒤로 비워둘 시간입니다.
           </p>
         </div>
       ) : null}

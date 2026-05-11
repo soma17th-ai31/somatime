@@ -56,10 +56,9 @@ class Meeting(Base):
     duration_minutes: Mapped[int] = mapped_column(Integer, nullable=False)
     location_type: Mapped[str] = mapped_column(String(10), nullable=False)
 
-    # v3 — variable offline buffer (Q8). 30 / 60 / 90 / 120.
-    offline_buffer_minutes: Mapped[int] = mapped_column(
-        Integer, nullable=False, server_default="30", default=30
-    )
+    # Issue #13 follow-up — meeting-level offline_buffer_minutes was dropped.
+    # Buffer is now strictly per-participant (Participant.buffer_minutes), with
+    # a hard-coded default in app.services.scheduler.DEFAULT_BUFFER_MINUTES.
 
     time_window_start: Mapped[time] = mapped_column(Time, nullable=False)
     time_window_end: Mapped[time] = mapped_column(Time, nullable=False)

@@ -245,7 +245,6 @@ export default function MeetingPage() {
             nickname={participantNickname}
             isRequired={(meeting.required_nicknames ?? []).includes(participantNickname)}
             myBufferMinutes={meeting.my_buffer_minutes ?? null}
-            meetingBufferMinutes={meeting.offline_buffer_minutes}
             locationType={meeting.location_type}
             onRenamed={(newName) => {
               writeParticipantNickname(slug, newName)

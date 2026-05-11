@@ -71,9 +71,6 @@ class LLMAdapter(ABC):
                 "title": meeting.title,
                 "location_type": meeting.location_type,
                 "duration_minutes": meeting.duration_minutes,
-                "offline_buffer_minutes": int(
-                    getattr(meeting, "offline_buffer_minutes", 30) or 30
-                ),
             },
             "rules": {
                 "slot_unit_minutes": 30,
