@@ -17,7 +17,7 @@ v3.2 (2026-05-06 organizer gate removed, Path B):
 """
 from __future__ import annotations
 
-from datetime import date, datetime, time
+from datetime import date, datetime
 from enum import Enum
 from typing import List, Optional
 
@@ -45,8 +45,6 @@ class MeetingCreate(BaseModel):
     candidate_dates: Optional[List[date]] = None
     duration_minutes: int = Field(ge=30, le=24 * 60)
     location_type: LocationType
-    time_window_start: time = Field(default=time(9, 0))
-    time_window_end: time = Field(default=time(22, 0))
     include_weekends: bool = False
 
     @field_validator("duration_minutes")
@@ -58,9 +56,8 @@ class MeetingCreate(BaseModel):
 
     @model_validator(mode="after")
     def _check_consistency(self) -> "MeetingCreate":
-        if self.time_window_end <= self.time_window_start:
-            raise ValueError("time_window_end must be > time_window_start")
-
+        # Issue #57 — time_window_* fields are gone; the search window is a
+        # process-wide constant in app.services.scheduler. No range check here.
         if self.date_mode == DateMode.range:
             if self.date_range_start is None or self.date_range_end is None:
                 raise ValueError(
@@ -102,8 +99,6 @@ class MeetingSettingsUpdate(BaseModel):
     candidate_dates: Optional[List[date]] = None
     duration_minutes: int = Field(ge=30, le=24 * 60)
     location_type: LocationType
-    time_window_start: time
-    time_window_end: time
     include_weekends: bool
 
     @field_validator("duration_minutes")
@@ -115,9 +110,7 @@ class MeetingSettingsUpdate(BaseModel):
 
     @model_validator(mode="after")
     def _check_consistency(self) -> "MeetingSettingsUpdate":
-        if self.time_window_end <= self.time_window_start:
-            raise ValueError("time_window_end must be > time_window_start")
-
+        # Issue #57 — time_window_* gone; search window is process-wide.
         if self.date_mode == DateMode.range:
             if self.date_range_start is None or self.date_range_end is None:
                 raise ValueError(
@@ -170,8 +163,6 @@ class MeetingDetail(BaseModel):
     required_nicknames: List[str] = Field(default_factory=list)
     is_ready_to_calculate: bool
     location_type: LocationType
-    time_window_start: time
-    time_window_end: time
     include_weekends: bool
     share_url: str
     # Issue #32 — KST timestamp at/after which the room is auto-deleted.

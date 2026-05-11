@@ -111,8 +111,6 @@ def make_meeting(client):
             "date_range_end": "2026-05-15",
             "duration_minutes": 60,
             "location_type": "online",
-            "time_window_start": "09:00",
-            "time_window_end": "22:00",
             "include_weekends": False,
         }
         body.update(overrides)
@@ -165,8 +163,6 @@ def sample_meeting(db_session):
         date_range_end=date(2026, 5, 15),
         duration_minutes=60,
         location_type="online",
-        time_window_start=time(9, 0),
-        time_window_end=time(22, 0),
         include_weekends=False,
         created_at=datetime(2026, 5, 4, tzinfo=timezone.utc).replace(tzinfo=None),
     )

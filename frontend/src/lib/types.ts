@@ -15,8 +15,6 @@ export interface MeetingCreateRequest {
   candidate_dates: string[] | null
   duration_minutes: number
   location_type: LocationType
-  time_window_start: string // HH:MM
-  time_window_end: string // HH:MM
   include_weekends: boolean
 }
 
@@ -38,8 +36,6 @@ export interface MeetingSettingsUpdate {
   candidate_dates: string[] | null
   duration_minutes: number
   location_type: LocationType
-  time_window_start: string
-  time_window_end: string
   include_weekends: boolean
 }
 
@@ -61,8 +57,6 @@ export interface MeetingDetail {
   required_nicknames?: string[]
   is_ready_to_calculate: boolean
   location_type: LocationType
-  time_window_start: string
-  time_window_end: string
   include_weekends: boolean
   share_url: string
   // v3.6: present (and possibly empty []) when the caller has the participant

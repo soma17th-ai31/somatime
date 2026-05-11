@@ -8,6 +8,8 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import type { MeetingDetail } from "@/lib/types"
 import {
+  WINDOW_END,
+  WINDOW_START,
   cellsToRanges,
   formatDateLabelTwoLine,
   getMeetingDates,
@@ -59,8 +61,8 @@ export function AvailabilityTimeline({
   bufferMinutes = 0,
 }: AvailabilityTimelineProps) {
   const dates = getMeetingDates(meeting)
-  const startMin = timeToMinutes(meeting.time_window_start)
-  const endMin = timeToMinutes(meeting.time_window_end)
+  const startMin = timeToMinutes(WINDOW_START)
+  const endMin = timeToMinutes(WINDOW_END)
   const totalMinutes = Math.max(0, endMin - startMin)
 
   const liveValueRef = useRef<Set<string>>(value)

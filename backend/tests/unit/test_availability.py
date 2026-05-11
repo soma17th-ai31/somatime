@@ -74,8 +74,6 @@ def _make_participant_in_meeting(db_session) -> Participant:
         date_range_end=date(2026, 5, 15),
         duration_minutes=60,
         location_type="online",
-        time_window_start=time(9, 0),
-        time_window_end=time(22, 0),
         include_weekends=False,
         created_at=now_kst_naive(),
     )

@@ -21,8 +21,6 @@ def _create(client, **overrides) -> dict:
         "date_range_end": "2026-05-15",
         "duration_minutes": 60,
         "location_type": "online",
-        "time_window_start": "09:00",
-        "time_window_end": "22:00",
         "include_weekends": False,
     }
     # Drop legacy participant_count overrides — the field no longer exists.

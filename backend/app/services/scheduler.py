@@ -37,6 +37,14 @@ DEFAULT_BUFFER_MINUTES = 60
 # Legacy alias retained for any external import paths; new code should use
 # DEFAULT_BUFFER_MINUTES.
 BUFFER_MINUTES = DEFAULT_BUFFER_MINUTES
+
+# Issue #57 — every meeting now shares one fixed search window.
+# MEETING_WINDOW_END is the *last slot start*: the last 30-min slot runs
+# 23:30-24:00. _enumerate_slots_v3 compares ``slot_start + duration <=
+# window_end_inclusive``, so we anchor window_end_inclusive at the next
+# day's 00:00.
+MEETING_WINDOW_START = time(6, 0)
+MEETING_WINDOW_END = time(23, 30)
 SPREAD_MIN_MINUTES = 120  # "2h+ apart" rule
 DEFAULT_MAX_WINDOWS = 40
 
@@ -418,8 +426,10 @@ def _enumerate_slots_v3(meeting: Meeting) -> List[Slot]:
 
     slots: List[Slot] = []
     for current_day in enumerate_search_dates(meeting):
-        window_start = datetime.combine(current_day, _floor_time(meeting.time_window_start))
-        window_end = datetime.combine(current_day, meeting.time_window_end)
+        # Issue #57 — fixed window 06:00-24:00. window_end is the next day's
+        # 00:00 so the last 23:30 slot (running 23:30-24:00) stays in the grid.
+        window_start = datetime.combine(current_day, MEETING_WINDOW_START)
+        window_end = datetime.combine(current_day, time(0, 0)) + timedelta(days=1)
         slot_start = window_start
         while slot_start + duration <= window_end:
             slots.append(Slot(start=slot_start, end=slot_start + duration))
@@ -589,8 +599,9 @@ def build_timetable(
 
     out: List[dict] = []
     for current_day in enumerate_search_dates(meeting):
-        window_start = datetime.combine(current_day, _floor_time(meeting.time_window_start))
-        window_end = datetime.combine(current_day, meeting.time_window_end)
+        # Issue #57 — fixed window 06:00-24:00 (next-day 00:00 as exclusive end).
+        window_start = datetime.combine(current_day, MEETING_WINDOW_START)
+        window_end = datetime.combine(current_day, time(0, 0)) + timedelta(days=1)
         slot_start = window_start
         while slot_start + step <= window_end:
             slot_end = slot_start + step

@@ -35,8 +35,8 @@ def _make_meeting(
     end_date: date = date(2026, 5, 12),
     candidate_dates=None,
     include_weekends: bool = True,
-    window_start: time = time(9, 0),
-    window_end: time = time(22, 0),
+    window_start: time = time(9, 0),  # noqa: ARG001 — kept for call-site compat
+    window_end: time = time(22, 0),  # noqa: ARG001 — kept for call-site compat
     target: int = 1,  # noqa: ARG001 — accepted for back-compat
 ) -> Meeting:
     # v3.1: participant_count column dropped; scheduler is unaffected.
@@ -44,7 +44,10 @@ def _make_meeting(
     # in favour of per-participant buffer_minutes. The legacy `buffer` kw
     # remains so existing tests don't need to rewire — they now pass the same
     # value through to `_participant(..., buffer_minutes=...)` instead.
-    del target, buffer
+    # #57: meeting-level time_window_start/end were dropped too. The
+    # window_* kwargs are accepted but discarded — slots now use the global
+    # MEETING_WINDOW_START / MEETING_WINDOW_END constant (06:00-24:00).
+    del target, buffer, window_start, window_end
     return Meeting(
         slug="abc12345",
         title="meeting",
@@ -54,8 +57,6 @@ def _make_meeting(
         candidate_dates=candidate_dates,
         duration_minutes=duration,
         location_type=location,
-        time_window_start=window_start,
-        time_window_end=window_end,
         include_weekends=include_weekends,
         created_at=datetime(2026, 5, 4),
     )
@@ -236,9 +237,10 @@ def test_range_mode_respects_include_weekends() -> None:
 def test_empty_windows_when_no_free_intersection() -> None:
     meeting = _make_meeting(location="online", duration=60, target=2)
     parts = [_participant(1, "a"), _participant(2, "b")]
+    # Issue #57 — fixed 06:00-24:00 window. Cover the whole day for both.
     busy = {
-        1: [_block(1, datetime(2026, 5, 12, 9, 0), datetime(2026, 5, 12, 22, 0))],
-        2: [_block(2, datetime(2026, 5, 12, 9, 0), datetime(2026, 5, 12, 22, 0))],
+        1: [_block(1, datetime(2026, 5, 12, 6, 0), datetime(2026, 5, 13, 0, 0))],
+        2: [_block(2, datetime(2026, 5, 12, 6, 0), datetime(2026, 5, 13, 0, 0))],
     }
     windows = generate_candidate_windows(meeting, busy, participants=parts)
     assert windows == []
