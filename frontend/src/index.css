@@ -1,4 +1,4 @@
-/* SomaMeet — Joonggon design tokens, ported to Tailwind v3 syntax. */
+/* SomaMeet — Soma design tokens, ported to Tailwind v3 syntax. */
 /* All :root + .dark CSS variables drive the Tailwind tokens declared in tailwind.config.ts. */
 
 @import "pretendard/dist/web/variable/pretendardvariable.css";
@@ -12,27 +12,51 @@
     BlinkMacSystemFont, system-ui, sans-serif;
   --radius: 0.75rem;
 
-  --background: #ffffff;
-  --foreground: #000000;
-  --card: #f5f6f6;
-  --card-foreground: #000000;
-  --popover: #ffffff;
-  --popover-foreground: #000000;
-  --primary: #5e6ad2;
+  --background: #FFFFFF;
+  --foreground: #0F172A;
+  --card: #F9FAFB;
+  --card-foreground: #0F172A;
+  --popover: #FFFFFF;
+  --popover-foreground: #0F172A;
+  --primary: #4F5AAA;
   --primary-foreground: #ffffff;
-  --secondary: #f6f7f7;
-  --secondary-foreground: #000000;
-  --muted: #f6f7f7;
-  --muted-foreground: #62666d;
-  --accent-bg: #eef0f3;
-  --accent-fg: #000000;
-  --destructive: #d92d20;
-  --border: #d9dcdf;
-  --input: #ffffff;
-  --ring: #5e69d1;
-  --success: #27a644;
+  --secondary: #FAFAFA;
+  --secondary-foreground: #0F172A;
+  --muted: #FAFAFA;
+  --muted-foreground: #64748B;
+  --accent-bg: #EEF0FA;
+  --accent-fg: #0F172A;
+  --destructive: #DC2626;
+  --border: #E5E7EB;
+  --input: #FFFFFF;
+  --ring: #4F5AAA;
+  --success: #16A34A;
   --surface-edge: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   --screen-grid-line: rgba(0, 0, 0, 0.045);
+
+  /* Soma-specific extensions for redesign (heat ramp, soft surfaces, buffer hatching) */
+  --soma-primary-hover:   #404996;
+  --soma-primary-active:  #353D7E;
+  --soma-primary-soft:    #EEF0FA;
+  --soma-primary-ring:    rgba(79,90,170,0.18);
+  --soma-ink-soft:        #334155;
+  --soma-faint:           #94A3B8;
+  --soma-card-hover:      #F3F4F6;
+  --soma-border-strong:   #CBD5E1;
+  --soma-destructive-soft:#FEF2F2;
+  --soma-success-soft:    #F0FDF4;
+  --soma-warn:            #D97706;
+  --soma-warn-soft:       #FFFBEB;
+  /* heatmap ramp (응답자 수 인코딩) */
+  --soma-heat-0: #F9FAFB;
+  --soma-heat-1: #E0E4F2;
+  --soma-heat-2: #B8C0E0;
+  --soma-heat-3: #8E99CE;
+  --soma-heat-4: #6571BD;
+  --soma-heat-5: #4F5AAA;
+  /* buffer hatching pattern */
+  --soma-buffer-bg: repeating-linear-gradient(45deg, #E2E8F0 0 4px, #F1F5F9 4px 8px);
+
   color-scheme: light;
 }
 
@@ -43,7 +67,7 @@
   --card-foreground: #f7f8f8;
   --popover: #141516;
   --popover-foreground: #f7f8f8;
-  --primary: #5e6ad2;
+  --primary: #4F5AAA;
   --primary-foreground: #ffffff;
   --secondary: #141516;
   --secondary-foreground: #f7f8f8;
@@ -54,7 +78,7 @@
   --destructive: #ff5c5c;
   --border: #23252a;
   --input: #0f1011;
-  --ring: #5e69d1;
+  --ring: #4F5AAA;
   --success: #27a644;
   --surface-edge: inset 0 1px 0 rgba(255, 255, 255, 0.045);
   --screen-grid-line: rgba(247, 248, 248, 0.035);
