@@ -10,6 +10,10 @@ The single recommend() method per adapter returns
 - reason and share_message_draft are written by the LLM in the same call.
 - /calculate does NOT call the LLM (deterministic only).
 - /confirm does NOT call the LLM (frontend supplies share_message_draft).
+
+v3.28 — parse_availability() added for the natural-language availability
+input endpoint. Returns busy_blocks parsed from a free-text participant
+input. NEVER receives existing busy_blocks (privacy: text only).
 """
 from __future__ import annotations
 
@@ -61,6 +65,30 @@ class LLMAdapter(ABC):
             }
         """
 
+    @abstractmethod
+    def parse_availability(self, text: str, meeting: Meeting) -> dict:
+        """Parse a participant's natural-language availability text.
+
+        Args:
+            text: free-form Korean text describing the participant's
+                available / unavailable times (e.g. "월 9-12 수업 있음").
+            meeting: the Meeting; date range & search window are used to
+                bound which dates/times can appear in busy_blocks.
+
+        Returns:
+            {
+              "busy_blocks": [
+                {"start": ISO datetime str (KST naive),
+                 "end": ISO datetime str (KST naive)},
+                ...
+              ],
+              "summary": str
+            }
+
+        Privacy: NEVER receives existing busy_blocks. Only the participant's
+        own text and meeting-level public metadata.
+        """
+
     # ------------------------------------------------------------------ shared
 
     def build_recommendation_payload(
@@ -102,6 +130,36 @@ class LLMAdapter(ABC):
                 }
                 for w in candidate_windows
             ],
+        }
+
+
+    def build_availability_parse_payload(self, text: str, meeting: Meeting) -> dict:
+        """Privacy-safe payload for parse_availability.
+
+        Includes:
+        - meeting.title (public)
+        - the list of dates the meeting actually searches (range or picked)
+        - the fixed meeting search window (06:00-24:00, MEETING_WINDOW_START/END)
+        - the participant's own text (this is their own input, not a privacy leak)
+        """
+        from app.services.scheduler import (
+            MEETING_WINDOW_START,
+            enumerate_search_dates,
+        )
+
+        dates = enumerate_search_dates(meeting)
+
+        return {
+            "meeting": {
+                "title": meeting.title,
+                "dates": [d.isoformat() for d in dates],
+                "window_start": MEETING_WINDOW_START.strftime("%H:%M"),
+                # The inclusive end of the search window is the next-day 00:00,
+                # but we expose it as "24:00" so the LLM can write a same-day
+                # busy block ending at midnight without timezone gymnastics.
+                "window_end_inclusive": "24:00",
+            },
+            "text": text,
         }
 
 
