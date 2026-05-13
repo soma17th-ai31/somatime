@@ -13,7 +13,13 @@
 
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
-import { useForm, Controller } from "react-hook-form"
+import {
+  useForm,
+  Controller,
+  useWatch,
+  type Control,
+  type FieldErrors,
+} from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { ArrowRight, Loader2 } from "lucide-react"
 import { z } from "zod"
@@ -122,20 +128,21 @@ export default function CreateMeetingPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
+  // Top-level useForm — note we deliberately do NOT call `watch()` here.
+  // Calling `watch()` at the component root makes every field change trigger
+  // a re-render of the entire page (including DayPicker + SharePreviewCard),
+  // which causes the "calendar click feels laggy" report. Instead, individual
+  // sub-fields read their own values via Controller render-props or useWatch.
   const {
     register,
     handleSubmit,
     control,
-    watch,
     setValue,
     formState: { errors },
   } = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues,
   })
-
-  const dateMode = watch("date_mode")
-  const titleValue = watch("title") ?? ""
 
   async function onSubmit(values: FormValues) {
     setSubmitting(true)
@@ -179,23 +186,7 @@ export default function CreateMeetingPage() {
   }
 
   const titleField = (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <Label htmlFor="title">제목</Label>
-        <span className="text-xs font-medium text-muted-foreground">
-          {titleValue.length}/{TITLE_MAX}
-        </span>
-      </div>
-      <Input
-        id="title"
-        placeholder="(선택) 회의 제목을 입력해 주세요"
-        maxLength={TITLE_MAX}
-        {...register("title")}
-      />
-      {errors.title ? (
-        <p className="text-xs text-destructive">{errors.title.message}</p>
-      ) : null}
-    </div>
+    <TitleField control={control} register={register} errors={errors} />
   )
 
   const durationField = (
@@ -331,20 +322,7 @@ export default function CreateMeetingPage() {
           />
         )}
       />
-      {dateMode === "range" ? (
-        <>
-          {errors.date_range_start ? (
-            <p className="text-xs text-destructive">{errors.date_range_start.message}</p>
-          ) : null}
-          {errors.date_range_end ? (
-            <p className="text-xs text-destructive">{errors.date_range_end.message}</p>
-          ) : null}
-        </>
-      ) : errors.candidate_dates ? (
-        <p className="text-xs text-destructive">
-          {errors.candidate_dates.message as string}
-        </p>
-      ) : null}
+      <PeriodErrors control={control} errors={errors} />
     </fieldset>
   )
 
@@ -415,6 +393,70 @@ export default function CreateMeetingPage() {
       </main>
     </div>
   )
+}
+
+interface TitleFieldProps {
+  control: Control<FormValues>
+  register: ReturnType<typeof useForm<FormValues>>["register"]
+  errors: FieldErrors<FormValues>
+}
+
+// Isolated so keystroke-driven character-count updates don't re-render the
+// page (and DayPicker + SharePreviewCard) — only this fragment is reactive
+// to the `title` field via useWatch's own subscription.
+function TitleField({ control, register, errors }: TitleFieldProps) {
+  const titleValue = useWatch({ control, name: "title" }) ?? ""
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <Label htmlFor="title">제목</Label>
+        <span className="text-xs font-medium text-muted-foreground">
+          {titleValue.length}/{TITLE_MAX}
+        </span>
+      </div>
+      <Input
+        id="title"
+        placeholder="(선택) 회의 제목을 입력해 주세요"
+        maxLength={TITLE_MAX}
+        {...register("title")}
+      />
+      {errors.title ? (
+        <p className="text-xs text-destructive">{errors.title.message}</p>
+      ) : null}
+    </div>
+  )
+}
+
+interface PeriodErrorsProps {
+  control: Control<FormValues>
+  errors: FieldErrors<FormValues>
+}
+
+// Same isolation pattern for the date_mode-dependent error block. Previously
+// the parent component called watch("date_mode") which made every Controller
+// onChange (including each calendar cell click) re-render the entire page.
+function PeriodErrors({ control, errors }: PeriodErrorsProps) {
+  const dateMode = useWatch({ control, name: "date_mode" })
+  if (dateMode === "range") {
+    return (
+      <>
+        {errors.date_range_start ? (
+          <p className="text-xs text-destructive">{errors.date_range_start.message}</p>
+        ) : null}
+        {errors.date_range_end ? (
+          <p className="text-xs text-destructive">{errors.date_range_end.message}</p>
+        ) : null}
+      </>
+    )
+  }
+  if (errors.candidate_dates) {
+    return (
+      <p className="text-xs text-destructive">
+        {errors.candidate_dates.message as string}
+      </p>
+    )
+  }
+  return null
 }
 
 function TopBar() {

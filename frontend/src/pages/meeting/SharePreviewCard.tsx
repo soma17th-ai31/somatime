@@ -5,7 +5,12 @@
 //   - disabled "링크 복사" / "QR 저장" buttons
 //   - "회의 생성 후 실제 링크..." caption
 // After the meeting is created the real link + QR are shown on /m/{slug}.
+//
+// Wrapped in React.memo so it doesn't re-render on every form keystroke or
+// calendar click — the rendered output only depends on the optional `inline`
+// flag, and the inner FakeQR runs a 625-rect PRNG that's wasteful to redo.
 
+import { memo } from "react"
 import { Copy, Link as LinkIcon, Share2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
@@ -68,7 +73,9 @@ interface Props {
   inline?: boolean
 }
 
-export function SharePreviewCard({ inline = false }: Props) {
+export const SharePreviewCard = memo(SharePreviewCardImpl)
+
+function SharePreviewCardImpl({ inline = false }: Props) {
   return (
     <div
       data-testid="share-preview-card"
