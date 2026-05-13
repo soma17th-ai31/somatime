@@ -243,30 +243,6 @@ export default function MeetingPage() {
     )
   }
 
-  // v4 (Phase F follow-up) — Gate the full meeting UI behind a successful
-  // join. Until participantNickname is set we render ONLY JoinSection (which
-  // already carries its own meeting context card + title fallback), matching
-  // the soma-entry mockup. All other sections — MeetingSummary, sidebar
-  // (RecommendCard + Participants), AvailabilitySection, TimetableSection —
-  // are hidden because the participant cookie those calls require doesn't
-  // exist yet anyway. ShareMessageDialog stays mounted at the root so the
-  // post-confirm read-only dialog still fires when joined.
-  if (!participantNickname) {
-    return (
-      <div className="min-h-screen bg-background text-foreground">
-        <TopBar />
-        <main className="linear-container px-5 py-6 sm:py-10 lg:px-10 lg:py-10">
-          <JoinSection
-            slug={slug}
-            meeting={meeting}
-            locationType={meeting.location_type}
-            onJoined={onJoined}
-          />
-        </main>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-background text-foreground">
       <TopBar />
@@ -283,29 +259,40 @@ export default function MeetingPage() {
 
         <div className="grid gap-6 lg:grid-cols-[1fr_360px] lg:items-start lg:gap-8">
           <div className="flex min-w-0 flex-col gap-6">
-            <CurrentParticipantCard
-              slug={slug}
-              nickname={participantNickname}
-              isRequired={(meeting.required_nicknames ?? []).includes(participantNickname)}
-              myBufferMinutes={meeting.my_buffer_minutes ?? null}
-              locationType={meeting.location_type}
-              onRenamed={(newName) => {
-                writeParticipantSession(slug, newName)
-                setParticipantNickname(newName)
-                void reloadMeeting()
-              }}
-              onSwitchUser={handleSwitchUser}
-              onBufferChanged={() => {
-                void reloadMeeting()
-                setRefreshKey((k) => k + 1)
-              }}
-            />
+            {participantNickname ? (
+              <CurrentParticipantCard
+                slug={slug}
+                nickname={participantNickname}
+                isRequired={(meeting.required_nicknames ?? []).includes(participantNickname)}
+                myBufferMinutes={meeting.my_buffer_minutes ?? null}
+                locationType={meeting.location_type}
+                onRenamed={(newName) => {
+                  writeParticipantSession(slug, newName)
+                  setParticipantNickname(newName)
+                  void reloadMeeting()
+                }}
+                onSwitchUser={handleSwitchUser}
+                onBufferChanged={() => {
+                  void reloadMeeting()
+                  setRefreshKey((k) => k + 1)
+                }}
+              />
+            ) : (
+              <JoinSection
+                slug={slug}
+                meeting={meeting}
+                locationType={meeting.location_type}
+                onJoined={onJoined}
+              />
+            )}
 
-            <AvailabilitySection
-              slug={slug}
-              meeting={meeting}
-              onSubmitted={onParticipantSubmitted}
-            />
+            {participantNickname ? (
+              <AvailabilitySection
+                slug={slug}
+                meeting={meeting}
+                onSubmitted={onParticipantSubmitted}
+              />
+            ) : null}
 
             <TimetableSection
               slug={slug}
