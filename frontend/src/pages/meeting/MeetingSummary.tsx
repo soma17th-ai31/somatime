@@ -67,11 +67,6 @@ export function MeetingSummary({
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false)
   const [cancelBusy, setCancelBusy] = useState(false)
 
-  // 회의 시작 시각이 이미 지났으면 취소 비활성화. BE 도 409 로 막지만 미리 차단해 UX 개선.
-  const startInPast = Boolean(
-    meeting.confirmed_slot && new Date(meeting.confirmed_slot.start).getTime() <= Date.now(),
-  )
-
   async function handleCancelConfirm() {
     if (!onCancelConfirm) return
     setCancelBusy(true)
@@ -128,43 +123,6 @@ export function MeetingSummary({
       </div>
 
       <InviteShareRow url={meeting.share_url} />
-
-      {meeting.confirmed_slot ? (
-        <div className="rounded-xl border border-primary/30 bg-[var(--soma-primary-soft)] p-4 text-primary">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-xs font-semibold uppercase tracking-wider">확정된 시각</div>
-              <div className="mt-1 font-semibold">
-                {formatKstRange(meeting.confirmed_slot.start, meeting.confirmed_slot.end)}
-              </div>
-            </div>
-            {onCancelConfirm ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => setCancelDialogOpen(true)}
-                disabled={startInPast}
-                aria-label="회의 확정 취소"
-                data-testid="cancel-confirm"
-                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-              >
-                확정 취소
-              </Button>
-            ) : null}
-          </div>
-          {startInPast ? (
-            <p className="mt-2 text-xs text-muted-foreground">
-              회의 시작 시각이 지나 취소할 수 없습니다.
-            </p>
-          ) : null}
-          {meeting.confirmed_share_message ? (
-            <div className="mt-2 whitespace-pre-wrap rounded bg-background/80 p-2 text-xs text-foreground">
-              {meeting.confirmed_share_message}
-            </div>
-          ) : null}
-        </div>
-      ) : null}
 
       <EditMeetingDialog
         open={editing}

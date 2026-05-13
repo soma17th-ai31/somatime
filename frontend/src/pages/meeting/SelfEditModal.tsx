@@ -186,10 +186,11 @@ export function SelfEditModal({
             autoComplete="off"
             disabled={pendingClearPin}
             style={{
-              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
-              letterSpacing: "6px",
+              fontFamily:
+                "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
+              letterSpacing: "0.35em",
             }}
-            className="text-base placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60"
+            className="text-base md:text-base placeholder:text-muted-foreground/60"
             data-testid="rename-pin-input"
           />
           <button

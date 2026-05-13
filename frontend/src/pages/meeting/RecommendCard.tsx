@@ -522,7 +522,9 @@ function ConfirmedCard({
           <Check className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
           회의가 확정되었습니다
         </div>
-        <div className="text-base font-bold text-foreground">{range}</div>
+        <div className="text-[22px] font-extrabold leading-tight tracking-tight text-foreground tabular-nums">
+          {range}
+        </div>
         {confirmedShareMessage ? (
           <div className="rounded-xl bg-card p-3 text-sm">
             <div className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">

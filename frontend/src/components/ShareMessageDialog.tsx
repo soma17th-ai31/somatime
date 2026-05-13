@@ -77,8 +77,7 @@ export function ShareMessageDialog({
               확정 완료
             </span>
           ) : (
-            <span className="mb-2 inline-flex items-center gap-1 rounded-full bg-[var(--soma-success-soft)] px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-success">
-              <Check className="h-3 w-3" />
+            <span className="mb-2 inline-flex items-center gap-1 rounded-full bg-[var(--soma-primary-soft)] px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-primary">
               확정 직전
             </span>
           )}
