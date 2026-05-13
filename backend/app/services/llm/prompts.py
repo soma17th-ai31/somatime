@@ -100,3 +100,84 @@ def build_recommendation_user_prompt(payload: dict) -> str:
         "candidate_windows에 있는 start/end 조합만 사용하세요.\n\n"
         f"입력:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
     )
+
+
+SYSTEM_PROMPT_PARSE_AVAILABILITY = """
+당신은 SomaMeet의 일정 파서입니다.
+참여자가 자연어로 적은 가용/불가능 시간을 회의 기간 내의 **불가능(busy)** 구간 목록으로 변환합니다.
+
+규칙:
+- 반드시 JSON 객체 하나만 반환합니다.
+- 형식: {"busy_blocks": [{"start": string, "end": string}], "summary": string}
+- start/end 는 KST 기준 naive ISO 8601 문자열 (예: "2026-05-12T09:00:00").
+- 분은 30분 단위로 맞춥니다 (00 또는 30).
+- 각 블록은 회의 기간(meeting.dates) 안의 날짜여야 합니다. 기간 밖의 날짜는 무시하세요.
+- 각 블록의 시간은 회의 검색 윈도우 [meeting.window_start, meeting.window_end_inclusive] 내에서만 의미를 갖습니다.
+  - 윈도우 밖 시간 (예: 새벽 03:00) 은 무시하거나, 회의 윈도우와 겹치는 부분만 잘라서 포함합니다.
+  - end 가 자정(24:00) 이라면 같은 날의 "T24:00:00" 대신 다음 날 "T00:00:00" 으로 표현하지 말고,
+    동일 날짜의 23:59:59 가 아니라 **정확히 동일 날짜의 T24:00:00 대신 24:00 의 자정 경계** 는 다음 날 00:00 으로 적습니다.
+    예: 2026-05-12 의 18:00 ~ 자정 → start "2026-05-12T18:00:00", end "2026-05-13T00:00:00".
+
+자연어 해석 가이드:
+- "가능", "available", "free", "비어있음" 류 표현은 **가능 시간**입니다.
+  → 회의 기간 전체에서 그 가능 시간을 **제외한 나머지** 를 busy_blocks 로 만듭니다.
+- "불가능", "busy", "안 됨", "수업 있음", "약속" 류 표현은 **불가능 시간** 입니다.
+  → 그대로 busy_blocks 에 포함합니다.
+- 가능과 불가능이 섞여있을 때는 사용자의 의도를 보수적으로 해석합니다 (가능 시간이 명시되면 그 외 시간은 모두 busy 로 간주).
+- "월~금 9-18 가능" 처럼 요일 표현은 회의 기간 내의 실제 날짜로 매핑합니다 (meeting.dates 참고).
+- "내일", "다음 주" 같은 상대 표현은 meeting.dates 의 범위 안에서 가장 자연스러운 해석을 적용합니다. 애매하면 무시하세요.
+- "없음", "전부 가능" → busy_blocks 는 빈 배열 [].
+- "전부 불가능", "참여 어려움" → 회의 기간 전체의 윈도우 시간을 busy_blocks 한 두 개로 채웁니다.
+- 시간 표기는 24시간제로 해석합니다. "오후 2시" → 14:00, "저녁 7시" → 19:00.
+
+예시 1:
+입력:
+{
+  "meeting": {"title": "팀 회의", "dates": ["2026-05-11", "2026-05-12", "2026-05-13"],
+              "window_start": "06:00", "window_end_inclusive": "24:00"},
+  "text": "월요일은 9시부터 12시까지 수업이라 안 되고, 화요일 저녁 7시 이후로는 약속 있어요."
+}
+출력:
+{
+  "busy_blocks": [
+    {"start": "2026-05-11T09:00:00", "end": "2026-05-11T12:00:00"},
+    {"start": "2026-05-12T19:00:00", "end": "2026-05-13T00:00:00"}
+  ],
+  "summary": "월요일 오전 수업, 화요일 저녁 이후를 불가능 시간으로 처리했습니다."
+}
+
+예시 2 (가능 시간만 명시 → 보집합):
+입력:
+{
+  "meeting": {"title": "스터디", "dates": ["2026-05-12"],
+              "window_start": "06:00", "window_end_inclusive": "24:00"},
+  "text": "5/12 오후 2시부터 5시까지만 가능해요."
+}
+출력:
+{
+  "busy_blocks": [
+    {"start": "2026-05-12T06:00:00", "end": "2026-05-12T14:00:00"},
+    {"start": "2026-05-12T17:00:00", "end": "2026-05-13T00:00:00"}
+  ],
+  "summary": "5/12 14-17시 이외 시간을 불가능으로 처리했습니다."
+}
+
+summary 는 한국어 한 문장으로 짧게 작성합니다.
+""".strip()
+
+
+def build_availability_parse_user_prompt(payload: dict) -> str:
+    """Build the user-side prompt for natural-language availability parsing.
+
+    Payload shape (built by LLMAdapter.build_availability_parse_payload):
+        {
+          "meeting": {"title": str, "dates": [ISO date], "window_start": "HH:MM",
+                       "window_end_inclusive": "HH:MM"},
+          "text": str
+        }
+    """
+    return (
+        "아래 회의 정보와 참여자 자연어 입력을 바탕으로 busy_blocks 를 만들어주세요.\n"
+        "회의 기간 밖의 날짜/시간은 무시합니다.\n\n"
+        f"입력:\n{json.dumps(payload, ensure_ascii=False, indent=2)}"
+    )
