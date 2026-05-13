@@ -62,8 +62,28 @@ export function formatKstRange(startIso: string, endIso: string): string {
 // Build a KST-anchored ISO string from a YYYY-MM-DD date and HH:MM time entered by the user.
 export function buildKstIso(dateStr: string, timeStr: string): string {
   if (!dateStr || !timeStr) return ""
-  const safeTime = timeStr.length === 5 ? `${timeStr}:00` : timeStr
-  return `${dateStr}T${safeTime}+09:00`
+  const parts = timeStr.split(":").map((part) => Number.parseInt(part, 10))
+  const [hour, minute = 0, second = 0] = parts
+  const fallbackTime = timeStr.length === 5 ? `${timeStr}:00` : timeStr
+  if (hour === undefined || [hour, minute, second].some((part) => Number.isNaN(part))) {
+    return `${dateStr}T${fallbackTime}+09:00`
+  }
+
+  const date = new Date(`${dateStr}T00:00:00Z`)
+  if (Number.isNaN(date.getTime())) return `${dateStr}T${fallbackTime}+09:00`
+
+  const totalSeconds = hour * 3600 + minute * 60 + second
+  const dayOffset = Math.floor(totalSeconds / 86400)
+  const secondsInDay = totalSeconds % 86400
+  date.setUTCDate(date.getUTCDate() + dayOffset)
+
+  const y = date.getUTCFullYear()
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0")
+  const d = String(date.getUTCDate()).padStart(2, "0")
+  const hh = String(Math.floor(secondsInDay / 3600)).padStart(2, "0")
+  const mm = String(Math.floor((secondsInDay % 3600) / 60)).padStart(2, "0")
+  const ss = String(secondsInDay % 60).padStart(2, "0")
+  return `${y}-${m}-${d}T${hh}:${mm}:${ss}+09:00`
 }
 
 // #32 — 회의 자동 삭제 예정 안내 텍스트 생성.
