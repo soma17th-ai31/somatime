@@ -422,7 +422,7 @@ export function AvailabilityTimeline({
                       data-testid={`range-${r.date}-${startLabel}-${endLabel}`}
                       className={cn(
                         "absolute top-1/2 flex -translate-y-1/2 items-center justify-center touch-none",
-                        "rounded-md bg-primary text-[11px] font-medium text-primary-foreground shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)]",
+                        "rounded-md bg-primary text-[11px] font-medium text-primary-foreground",
                         "hover:bg-primary/85 focus:outline-none focus:ring-2 focus:ring-ring/50",
                         isMoving ? "cursor-grabbing opacity-50" : "cursor-grab",
                       )}
