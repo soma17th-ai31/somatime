@@ -10,7 +10,8 @@
 // L600 (SelfEditModal).
 
 import { useEffect, useState } from "react"
-import { Check, Loader2, Star, X } from "lucide-react"
+import { Check, Loader2, X } from "lucide-react"
+import { cn } from "@/lib/cn"
 import { Button } from "@/components/ui/button"
 import { Dialog, DialogFooter, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
@@ -184,7 +185,11 @@ export function SelfEditModal({
             maxLength={4}
             autoComplete="off"
             disabled={pendingClearPin}
-            className="font-mono tracking-[0.4em]"
+            style={{
+              fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+              letterSpacing: "6px",
+            }}
+            className="text-base placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60"
             data-testid="rename-pin-input"
           />
           <button
@@ -200,30 +205,34 @@ export function SelfEditModal({
           </button>
         </div>
 
-        <label className="flex items-start gap-2 rounded-lg border border-border bg-background p-3">
-          <input
-            type="checkbox"
-            checked={draftIsRequired}
-            onChange={(e) => setDraftIsRequired(e.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-border accent-primary"
-            data-testid="rename-required-checkbox"
-          />
-          <div className="flex-1">
-            <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-              <Star
-                className={
-                  draftIsRequired
-                    ? "h-3.5 w-3.5 text-primary"
-                    : "h-3.5 w-3.5 text-muted-foreground"
-                }
-              />
-              필수 참여자
-            </div>
-            <div className="mt-0.5 text-xs text-muted-foreground">
+        <button
+          type="button"
+          role="switch"
+          aria-checked={draftIsRequired}
+          onClick={() => setDraftIsRequired((v) => !v)}
+          data-testid="rename-required-checkbox"
+          className="flex w-full items-center gap-3 rounded-xl border border-border bg-background px-3.5 py-3 text-left transition-colors hover:bg-card"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-bold text-foreground">필수 참여자</div>
+            <div className="mt-0.5 text-xs leading-snug text-muted-foreground">
               체크 시 추천 결과가 본인 가능 시간 안에서만 잡힙니다.
             </div>
           </div>
-        </label>
+          <div
+            className={cn(
+              "relative h-5 w-9 shrink-0 rounded-full transition-colors",
+              draftIsRequired ? "bg-primary" : "bg-border",
+            )}
+          >
+            <div
+              className={cn(
+                "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all",
+                draftIsRequired ? "left-[18px]" : "left-0.5",
+              )}
+            />
+          </div>
+        </button>
 
         {error ? <p className="text-xs text-destructive">{error}</p> : null}
 
