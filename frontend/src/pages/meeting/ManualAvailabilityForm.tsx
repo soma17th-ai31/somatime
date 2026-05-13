@@ -24,7 +24,8 @@ interface Props {
   // them to selected cells based on applyMode, then clears the pending
   // state via onPendingApplied.
   //   - "overwrite": replaces current selection (legacy ICS behaviour)
-  //   - "merge": union with current selected (= busy intersection)
+  //   - "merge": union of available cells with current selected
+  //              (= a slot is available if EITHER input marks it available)
   pendingBlocks?: { start: string; end: string }[] | null
   pendingApplyMode?: PendingApplyMode
   onPendingApplied?: () => void
@@ -100,17 +101,17 @@ export function ManualAvailabilityForm({
   // convert them to a selected Set (= available = allCells - busyCells) and
   // apply per applyMode:
   //   - "overwrite": replaces current selection.
-  //   - "merge": keeps the intersection of available cells (= union of busy),
-  //              so a slot stays available only when BOTH inputs allow it.
+  //   - "merge": union of available cells, so a slot is available when EITHER
+  //              the existing selection or the incoming input marks it available.
   // Then clear the pending so a single tab-switch doesn't re-apply repeatedly.
   useEffect(() => {
     if (!pendingBlocks) return
     const incoming = selectedFromBusyBlocks(meeting, pendingBlocks)
     if (pendingApplyMode === "merge") {
       setSelected((prev) => {
-        const next = new Set<string>()
+        const next = new Set<string>(prev)
         for (const k of incoming) {
-          if (prev.has(k)) next.add(k)
+          next.add(k)
         }
         return next
       })
