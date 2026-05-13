@@ -184,7 +184,12 @@ def parse_natural_language_availability(
 
         weekday_violations = _find_weekday_violations(busy_blocks, user_weekdays)
         chip_intent = _extract_chip_intent(recognized_phrases)
-        intent_violations = _find_intent_violations(busy_blocks, chip_intent, meeting)
+        text_intent = _extract_text_intent(payload.text)
+        # Chip intent wins on conflict — the chips are the LLM's own
+        # summary so we treat them as the more "considered" reading. Text
+        # intent fills gaps where the chips missed the weekday entirely.
+        combined_intent = {**text_intent, **chip_intent}
+        intent_violations = _find_intent_violations(busy_blocks, combined_intent, meeting)
 
         if not weekday_violations and not intent_violations:
             break
@@ -196,7 +201,7 @@ def parse_natural_language_availability(
                 len(intent_violations),
             )
             busy_blocks, summary = _apply_intent_repair(
-                busy_blocks, summary, chip_intent, meeting
+                busy_blocks, summary, combined_intent, meeting
             )
             busy_blocks = [b for b in busy_blocks if b not in weekday_violations]
             break
@@ -207,7 +212,7 @@ def parse_natural_language_availability(
                 _format_weekday_feedback(weekday_violations, user_weekdays)
             )
         if intent_violations:
-            feedback_parts.append(_format_intent_feedback(intent_violations, chip_intent))
+            feedback_parts.append(_format_intent_feedback(intent_violations, combined_intent))
         feedback = "\n".join(feedback_parts)
         logger.info(
             "NL parse: attempt %d hit weekday=%d intent=%d violations, retrying",
@@ -418,15 +423,20 @@ _CHIP_WEEKDAY_TOKENS = {
 
 
 def _chip_has_weekday(chip: str, wd: int) -> bool:
-    """Match '월' but not inside '5월'. The short form is allowed because
-    chips are short and the LLM-generated pattern is consistent.
+    """Match '월' but not inside '5월', '월말', or '수업'. The short form
+    is allowed because chips and short user phrasings are consistent,
+    but we require strict boundaries on both sides:
+
+    - Left:  must not be a digit (rules out "5월") or another hangul
+             syllable (rules out compound words).
+    - Right: must not be "요" (would be the full form, handled above)
+             and must not be another hangul syllable (rules out
+             "수업", "월말", "토양" etc).
     """
     full, short = _CHIP_WEEKDAY_TOKENS[wd]
     if full in chip:
         return True
-    # Bare '월' etc — require it not to be preceded by a digit (which would
-    # mean it's a month token like '5월').
-    pattern = re.compile(rf"(?<![0-9]){short}(?![요])")
+    pattern = re.compile(rf"(?<![0-9가-힣]){short}(?![요가-힣])")
     return bool(pattern.search(chip))
 
 
@@ -454,6 +464,40 @@ def _extract_chip_intent(phrases: list[str]) -> dict[int, str]:
             intent.pop(wd, None)
             continue
         intent[wd] = verb
+    return intent
+
+
+_TEXT_CLAUSE_SPLIT_RE = re.compile(r"[,.;\n]|(?:고\s)|(?:며\s)|(?:이고\s)|(?:이며\s)")
+
+
+def _extract_text_intent(text: str) -> dict[int, str]:
+    """Pull weekday → intent (available / busy) directly from the user's
+    free text. Used as a fallback layer alongside _extract_chip_intent —
+    when the LLM's chips skip a weekday or use ambiguous wording, the
+    user's original phrasing usually disambiguates.
+
+    Split heuristic: break the text into clauses on conjunctions
+    (",", "고", "며", ".", ";", newline). Each clause is expected to
+    name a single weekday + a single intent verb. Clauses that pair
+    both intents or no clear intent are skipped.
+    """
+    if not text:
+        return {}
+    intent: dict[int, str] = {}
+    for clause in _TEXT_CLAUSE_SPLIT_RE.split(text):
+        clause = clause.strip()
+        if not clause:
+            continue
+        is_available = any(m in clause for m in _CHIP_AVAILABLE_MARKERS)
+        is_busy = any(m in clause for m in _CHIP_BUSY_MARKERS) or "불가능" in clause
+        # Need exactly one direction in this clause
+        if is_available == is_busy:
+            continue
+        verb = "available" if is_available else "busy"
+        for wd in range(7):
+            if _chip_has_weekday(clause, wd):
+                # First clause to mention this weekday wins
+                intent.setdefault(wd, verb)
     return intent
 
 
