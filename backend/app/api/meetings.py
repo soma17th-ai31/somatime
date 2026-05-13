@@ -28,7 +28,7 @@ import logging
 from datetime import timedelta
 from typing import List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -219,6 +219,31 @@ def get_meeting(
         my_buffer_minutes=my_buffer_minutes,
         created_at=from_kst_naive(meeting.created_at),
     )
+
+
+@router.delete(
+    "/meetings/{slug}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
+)
+def delete_meeting(
+    meeting: Meeting = Depends(get_current_meeting),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Phase E — delete a meeting room outright (SettingsModal "회의 삭제").
+
+    v3.2 Path B: anyone with the slug may delete. The FE 2-step
+    confirmation dialog is the sole accident safeguard.
+
+    Cascades to Participant rows (Meeting.participants relationship is
+    delete-orphan) and from there to BusyBlock rows (Participant.busy_blocks
+    is delete-orphan as well, and the FK also has ondelete=CASCADE at the
+    DB level), so a single db.delete + commit cleans the whole subtree.
+    Mirrors the lazy-expiry cleanup path at GET /meetings/{slug}.
+    """
+    db.delete(meeting)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.patch("/meetings/{slug}/settings", response_model=MeetingDetail)

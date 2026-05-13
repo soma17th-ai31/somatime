@@ -1,15 +1,19 @@
-// Confirmation dialog. Spec §5.1 / §6:
-//   - Receives the picked candidate's share_message_draft (editable).
-//   - On 확정 -> caller POSTs /confirm with the (possibly edited) draft text.
-//   - On 닫기 -> dialog closes without confirming.
+// ShareMessageDialog — Phase E redesign (ConfirmModal in the Soma mockup).
+// Spec §5.1 / §6:
+//   - Pre-confirm: receives the picked candidate's share_message_draft (editable
+//     textarea), 메시지 복사 / 확정 buttons. Confirming triggers /confirm via
+//     the supplied onConfirm callback.
+//   - Post-confirm (readOnly): same dialog id but switches to a read-only
+//     announcement view; only 닫기 / 메시지 복사 remain.
 //
-// v3.2 (Path B): this dialog is the sole accident safeguard now —
-// organizer_token gating was retired and anyone with the share URL can
-// reach this point. The 2-step (open + 확정) gate must remain intact.
+// v3.2 (Path B): this is the sole accident safeguard now — organizer_token
+// gating was retired and anyone with the share URL can reach this point. The
+// 2-step (open + 확정) gate must remain intact.
 
 import { useEffect, useState } from "react"
+import { Check, Copy, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Dialog, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogDescription, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/components/ui/toast"
 
 interface ShareMessageDialogProps {
@@ -37,7 +41,6 @@ export function ShareMessageDialog({
   const { toast } = useToast()
   const [draft, setDraft] = useState(initialDraft)
 
-  // Reset draft each time the dialog re-opens with a new initialDraft.
   useEffect(() => {
     if (open) setDraft(initialDraft)
   }, [open, initialDraft])
@@ -57,35 +60,83 @@ export function ShareMessageDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} labelledBy="share-message-title">
-      <DialogTitle id="share-message-title">
-        {readOnly ? "확정 안내 메시지" : "메시지 확인 후 확정"}
-      </DialogTitle>
-      <DialogDescription>
-        {readOnly ? "팀원에게 공유할 메시지입니다." : "확정 시각:"} {confirmedRange}.
-        {readOnly ? "" : " 메시지를 다듬고 확정 버튼을 눌러주세요."}
-      </DialogDescription>
-      <textarea
-        readOnly={readOnly}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        rows={8}
-        data-testid="share-draft-textarea"
-        className="mt-4 w-full resize-none rounded-md border border-border bg-input p-3 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/50"
-      />
-      <DialogFooter>
-        <Button variant="outline" onClick={() => onOpenChange(false)} disabled={busy}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (busy) return
+        onOpenChange(o)
+      }}
+      labelledBy="share-message-title"
+      className="max-w-lg p-0"
+    >
+      <div className="flex items-start justify-between gap-3 px-5 pb-1 pt-5">
+        <div className="min-w-0">
+          {readOnly ? (
+            <span className="mb-2 inline-flex items-center gap-1 rounded-full bg-[var(--soma-success-soft)] px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-success">
+              <Check className="h-3 w-3" />
+              확정 완료
+            </span>
+          ) : (
+            <span className="mb-2 inline-flex items-center gap-1 rounded-full bg-[var(--soma-success-soft)] px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider text-success">
+              <Check className="h-3 w-3" />
+              확정 직전
+            </span>
+          )}
+          <DialogTitle id="share-message-title">
+            {readOnly ? "확정 안내 메시지" : "메시지 확인 후 확정"}
+          </DialogTitle>
+          <DialogDescription>
+            {readOnly
+              ? `${confirmedRange} 회의가 확정되었습니다. 메시지를 복사해 팀원에게 공유해주세요.`
+              : `${confirmedRange}. 메시지를 다듬고 확정 버튼을 눌러주세요. 확정하면 가용 시간 입력이 종료됩니다.`}
+          </DialogDescription>
+        </div>
+        <button
+          type="button"
+          onClick={() => onOpenChange(false)}
+          disabled={busy}
+          aria-label="메시지 창 닫기"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="px-5 py-4">
+        <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+          공지 메시지 초안
+        </div>
+        <textarea
+          readOnly={readOnly}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          rows={8}
+          data-testid="share-draft-textarea"
+          className="w-full resize-none rounded-xl border border-border bg-card p-3.5 font-mono text-[13px] leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[2px] focus-visible:ring-ring/50"
+        />
+      </div>
+
+      <div className="flex justify-end gap-2 border-t border-border bg-card/40 px-5 py-3.5">
+        <Button variant="ghost" onClick={() => onOpenChange(false)} disabled={busy}>
           닫기
         </Button>
-        <Button onClick={handleCopy} variant="outline">
+        <Button onClick={handleCopy} variant="secondary">
+          <Copy className="h-3.5 w-3.5" />
           메시지 복사
         </Button>
         {!readOnly && onConfirm ? (
-          <Button onClick={handleConfirm} disabled={busy} data-testid="share-confirm">
+          <Button
+            onClick={handleConfirm}
+            disabled={busy}
+            data-testid="share-confirm"
+            className="bg-success text-white shadow-[0_1px_2px_rgba(15,23,42,0.05),_0_8px_18px_rgba(22,163,74,0.22)] hover:bg-success/90"
+          >
+            <Check className="h-3.5 w-3.5" />
             {busy ? "확정 중..." : "확정"}
           </Button>
         ) : null}
-      </DialogFooter>
+      </div>
+
     </Dialog>
   )
 }
