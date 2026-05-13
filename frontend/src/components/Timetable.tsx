@@ -426,7 +426,7 @@ function CellBlock({
           </div>
           {submittedNicknames && submittedNicknames.length > 0 ? (
             <div>
-              <div className="font-medium text-foreground">미응답</div>
+              <div className="font-medium text-foreground">불가능</div>
               <div className="mt-0.5 break-words text-muted-foreground">
                 {missingNicknames.length > 0 ? missingNicknames.join(", ") : "-"}
               </div>
