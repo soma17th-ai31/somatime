@@ -85,9 +85,18 @@ export function ShareMessageDialog({
             {readOnly ? "확정 안내 메시지" : "메시지 확인 후 확정해 주세요"}
           </DialogTitle>
           <DialogDescription>
-            {readOnly
-              ? `${confirmedRange} 회의가 확정되었습니다. 메시지를 복사해 팀원에게 공유해주세요.`
-              : "확정하면 참여자에게 알림이 전송되고, 가용 시간 입력이 종료됩니다."}
+            {readOnly ? (
+              <>
+                <span className="block font-semibold text-foreground">
+                  {confirmedRange}
+                </span>
+                <span className="mt-0.5 block">
+                  회의가 확정되었습니다. 메시지를 복사해 팀원에게 공유해주세요.
+                </span>
+              </>
+            ) : (
+              "확정하면 가용 시간 입력이 종료됩니다."
+            )}
           </DialogDescription>
         </div>
         <button

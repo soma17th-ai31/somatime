@@ -22,6 +22,7 @@ v3 changes:
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Dict, List, Optional, Sequence, Set, Tuple
@@ -224,6 +225,32 @@ def deterministic_top_candidates(
     return [_window_to_candidate(w) for w in chosen]
 
 
+_WEEKDAY_KO_FULL = ["월", "화", "수", "목", "금", "토", "일"]
+_WEEKDAY_TOKEN_RE = re.compile(r"(\d{1,2})/(\d{1,2})\s*\(([월화수목금토일])\)")
+
+
+def _correct_share_weekdays(share: str, start_dt, end_dt) -> str:
+    """LLMs occasionally hallucinate the weekday letter inside the
+    share-message draft (e.g. '5/16 (화)' when 5/16 is actually a Saturday).
+    Replace every 'M/D (X)' token whose (M, D) matches the candidate's
+    start or end date with the deterministic correct weekday.
+    """
+    correct = {
+        (start_dt.month, start_dt.day): _WEEKDAY_KO_FULL[start_dt.weekday()],
+        (end_dt.month, end_dt.day): _WEEKDAY_KO_FULL[end_dt.weekday()],
+    }
+
+    def _sub(match: "re.Match[str]") -> str:
+        m = int(match.group(1))
+        d = int(match.group(2))
+        expected = correct.get((m, d))
+        if expected is None:
+            return match.group(0)
+        return f"{m}/{d} ({expected})"
+
+    return _WEEKDAY_TOKEN_RE.sub(_sub, share)
+
+
 def validate_and_enrich(
     llm_candidates: Sequence[dict],
     windows: Sequence[CandidateWindow],
@@ -282,7 +309,9 @@ def validate_and_enrich(
                 available_count=window.available_count,
                 missing_participants=list(window.missing_participants),
                 reason=reason.strip(),
-                share_message_draft=share.strip(),
+                share_message_draft=_correct_share_weekdays(
+                    share.strip(), window.start, window.end
+                ),
                 note=None,
             )
         )

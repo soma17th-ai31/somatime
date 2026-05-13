@@ -124,7 +124,6 @@ export function TimetableSection({
 
   return (
     <section className="flex flex-col gap-3">
-      <h3 className="text-sm font-semibold text-foreground">타임테이블 (가로)</h3>
       {timetableError ? (
         <p className="text-sm text-destructive">{timetableError}</p>
       ) : null}

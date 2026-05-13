@@ -287,16 +287,21 @@ export function Timetable({
     <div className="space-y-3">
       <div className="overflow-hidden rounded-xl border border-border bg-background">
         {/* Header strip — title + count + heat ramp legend (Soma mockup spec). */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4 py-3">
-          <div className="flex items-baseline gap-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4 py-3.5">
+          <div className="min-w-0">
             <div className="text-[14px] font-bold tracking-tight text-foreground">
-              전체 가용 시간
+              타임테이블
             </div>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              입력된 답변을 합쳐서 참여자들의 공통 시간을 보여주어요
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
             <div className="text-xs font-medium text-muted-foreground">
               {`응답 ${responseCount}명`}
             </div>
+            <HeatLegend max={participantCount} />
           </div>
-          <HeatLegend max={participantCount} />
         </div>
       <div
         className="max-h-[520px] touch-pan-y overflow-auto overscroll-contain bg-card p-2"
