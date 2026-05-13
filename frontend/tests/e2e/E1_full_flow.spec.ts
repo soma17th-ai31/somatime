@@ -365,8 +365,10 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   // text to flip from pre-confirm to post-confirm.
   await expect(dialogTitle).toHaveText("확정 안내 메시지", { timeout: 15_000 })
 
-  // Close dialog.
-  await organizer.getByRole("button", { name: "닫기" }).click()
+  // Close dialog. v4 Phase E — redesigned modals add an icon-only X button
+  // with aria-label="<context> 창 닫기" alongside the footer "닫기" text
+  // button, so we need exact-match to avoid strict-mode collisions.
+  await organizer.getByRole("button", { name: "닫기", exact: true }).click()
 
   // -------- step 13: timetable horizontal layout — date row, time column --------
   // Timetable component renders with data-testid="timetable-horizontal".

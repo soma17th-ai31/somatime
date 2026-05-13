@@ -104,6 +104,14 @@ export const api = {
     return request<MeetingDetail>(`/api/meetings/${encodeURIComponent(slug)}`)
   },
 
+  // Phase E — DELETE /api/meetings/{slug}. 204 on success. Used from the
+  // SettingsModal danger zone after a 2-step confirm.
+  deleteMeeting(slug: string) {
+    return request<null>(`/api/meetings/${encodeURIComponent(slug)}`, {
+      method: "DELETE",
+    })
+  },
+
   // v3.19 — replace meeting settings (날짜/길이/방식/시간대 등). Title not editable.
   updateMeetingSettings(slug: string, payload: MeetingSettingsUpdate) {
     return request<MeetingDetail>(
