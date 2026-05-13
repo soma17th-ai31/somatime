@@ -146,6 +146,7 @@ export function Timetable({
   // #25 — 한 번에 하나의 Popover 만 열림. sticky=click 으로 열린 상태(셀 떠나도 유지).
   const [openCellId, setOpenCellId] = useState<string | null>(null)
   const [stickyCellId, setStickyCellId] = useState<string | null>(null)
+  const [isScrolled, setIsScrolled] = useState(false)
 
   function openByHover(id: string) {
     // 다른 셀이 sticky 면 hover 무시 (사용자가 명시적으로 고정해둔 패널 보호).
@@ -179,6 +180,11 @@ export function Timetable({
     }
   }
 
+  function handleScroll(e: React.UIEvent<HTMLDivElement>) {
+    const next = e.currentTarget.scrollTop > 0
+    setIsScrolled((current) => (current === next ? current : next))
+  }
+
   if (slots.length === 0 || dates.length === 0 || times.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -199,6 +205,7 @@ export function Timetable({
       <div
         className="max-h-[520px] touch-pan-y overflow-auto overscroll-contain rounded-xl border border-border bg-card p-2"
         data-testid="timetable-horizontal"
+        onScroll={handleScroll}
       >
         <div
           className="grid gap-x-1 gap-y-1 tabular-nums text-xs"
@@ -209,7 +216,7 @@ export function Timetable({
           {/* Top-left corner */}
           <div
             style={{ gridColumn: 1, gridRow: 1 }}
-            className="sticky left-0 top-0 z-20 bg-card"
+            className="sticky left-0 top-0 z-40 bg-card"
           />
 
           {/* Date headers (sticky top) */}
@@ -217,7 +224,10 @@ export function Timetable({
             <div
               key={`th-${date}`}
               style={{ gridColumn: dIdx + 2, gridRow: 1 }}
-              className="sticky top-0 z-10 bg-card px-1 py-2 text-center text-[11px] font-semibold text-foreground"
+              className={cn(
+                "sticky top-0 z-30 rounded-md border border-border bg-card px-1 py-2 text-center text-[11px] font-semibold text-foreground transition-colors transition-shadow hover:border-primary/30",
+                isScrolled && "shadow-[0_2px_8px_rgba(0,0,0,0.16)]",
+              )}
             >
               {formatDateLabel(date)}
             </div>
