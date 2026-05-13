@@ -229,13 +229,12 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
     const p = await ctx.newPage()
     await p.goto(shareUrl)
 
-    // Step 6 — JoinSection. Optional PIN field is a 4-digit input.
-    // #13 — offline 회의는 buffer 필수. 60분으로 선택.
+    // Step 6 — JoinSection. v4 Phase F: PIN is now required (4-digit).
+    // Buffer dropdown removed — JoinSection sends a default (60min for
+    // offline/any meetings) automatically; users adjust via SelfCard chips
+    // after joining.
     await p.locator('[data-testid="join-nickname"]').fill(nickname)
-    if (opts.pin) {
-      await p.locator('[data-testid="join-pin"]').fill(opts.pin)
-    }
-    await p.locator('[data-testid="join-buffer-select"]').selectOption("60")
+    await p.locator('[data-testid="join-pin"]').fill(opts.pin ?? "1111")
     await p.locator('[data-testid="join-submit"]').click()
 
     // Step 7 — AvailabilitySection appears with tabs.
