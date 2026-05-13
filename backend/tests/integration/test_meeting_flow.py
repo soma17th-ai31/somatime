@@ -62,6 +62,28 @@ def test_register_participant_then_submit_manual(client) -> None:
     assert avail_resp.status_code in (200, 201), avail_resp.text
 
 
+def test_submit_manual_accepts_participant_token_header_without_cookie(client) -> None:
+    data = _create_meeting(client)
+    slug = data["slug"]
+
+    p_resp = client.post(
+        f"/api/meetings/{slug}/participants",
+        json={"nickname": "alice", "buffer_minutes": 60},
+    )
+    assert p_resp.status_code in (200, 201), p_resp.text
+    token = p_resp.json()["token"]
+
+    client.cookies.clear()
+    avail_resp = client.post(
+        f"/api/meetings/{slug}/availability/manual",
+        headers={"X-SomaMeet-Participant-Token": token},
+        json={"busy_blocks": []},
+    )
+
+    assert avail_resp.status_code == 200, avail_resp.text
+    assert avail_resp.json()["source_type"] == "manual"
+
+
 def test_full_flow_calculate_and_confirm(client) -> None:
     data = _create_meeting(client)
     slug = data["slug"]
