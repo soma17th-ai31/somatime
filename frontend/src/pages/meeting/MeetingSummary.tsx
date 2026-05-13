@@ -1,23 +1,27 @@
-// Meeting summary card. Spec §5.1 — show date_mode, submitted_count, location + buffer,
+// Meeting summary header. Spec §5.1 — show date_mode, submitted_count, location,
 // confirmed slot + message (when present).
 //
-// v3.1 simplify pass (2026-05-06):
-//   - target_count / N/M progress retired. Show "제출자 N명" only.
-//   - "주최자 모드 / 참여자 모드" caption retired.
-//   - is_ready_to_calculate flips on submitted_count >= 1.
+// v4 (2026-05-13) — Soma redesign. Layout follows soma-meeting.jsx MeetingSummary:
+//   row 1: '참여 중' badge + AutoDeleteBadge
+//   row 2: h1 title + SettingsButton (pencil icon)
+//   row 3: 정보 metadata (CalendarIcon date | ClockIcon duration | MapPin location)
+//   row 4: InviteShareRow (QR + URL + 복사)
+//   row 5: 제출 현황 (count + progressbar + Participants chips externally)
+//   row 6: confirmed_slot block (when present, includes 취소 button)
 //
-// v3.2 (Path B): organizer split removed entirely — no isOrganizer prop.
+// Participants chips (submitted_nicknames + required-pending) live in the
+// sibling Participants card now — see ./Participants.tsx.
 
 import { useState } from "react"
-import { AlertCircle, Clock, Pencil } from "lucide-react"
+import { Calendar as CalendarIcon, Clock, MapPin, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog"
-import { CopyableUrl } from "@/components/CopyableUrl"
 import type { MeetingDetail } from "@/lib/types"
-import { formatExpiryNotice, formatKstRange } from "@/lib/datetime"
+import { formatKstRange } from "@/lib/datetime"
 import { cn } from "@/lib/cn"
 import { EditMeetingDialog } from "./EditMeetingDialog"
+import { InviteShareRow } from "./InviteShareRow"
+import { AutoDeleteBadge } from "./AutoDeleteBadge"
 
 const LOCATION_LABEL: Record<MeetingDetail["location_type"], string> = {
   online: "온라인",
@@ -36,11 +40,18 @@ interface Props {
 function formatDateScope(meeting: MeetingDetail): string {
   if (meeting.date_mode === "range") {
     if (!meeting.date_range_start || !meeting.date_range_end) return "-"
-    return `${meeting.date_range_start} ~ ${meeting.date_range_end} (범위)`
+    return `${formatDateShort(meeting.date_range_start)} – ${formatDateShort(meeting.date_range_end)}`
   }
   const dates = meeting.candidate_dates ?? []
   if (dates.length === 0) return "-"
-  return `${dates.join(", ")} (개별 ${dates.length}일)`
+  if (dates.length <= 2) return dates.map(formatDateShort).join(", ")
+  return `${formatDateShort(dates[0])} 외 ${dates.length - 1}일`
+}
+
+function formatDateShort(iso: string): string {
+  const [, m, d] = iso.split("-")
+  if (!m || !d) return iso
+  return `${Number.parseInt(m, 10)}월 ${Number.parseInt(d, 10)}일`
 }
 
 export function MeetingSummary({
@@ -78,174 +89,116 @@ export function MeetingSummary({
   }
 
   return (
-    <Card data-testid="meeting-summary" className="surface-edge">
-      <CardHeader className="flex flex-row items-start justify-between gap-3">
-        <div>
-          <CardTitle>{meeting.title}</CardTitle>
-          <CardDescription>모든 시간은 KST 기준입니다.</CardDescription>
-          {meeting.expires_at ? (() => {
-            const { text, isUrgent } = formatExpiryNotice(meeting.expires_at)
-            if (!text) return null
-            const Icon = isUrgent ? AlertCircle : Clock
-            return (
-              <p
-                className={cn(
-                  "mt-1 inline-flex items-center gap-1 text-xs",
-                  isUrgent ? "text-destructive" : "text-muted-foreground",
-                )}
-                data-testid="expiry-notice"
-              >
-                <Icon className="h-3 w-3" aria-hidden="true" />
-                <span>{text}</span>
-              </p>
-            )
-          })() : null}
-        </div>
+    <section data-testid="meeting-summary" className="flex flex-col gap-3.5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="inline-flex h-[22px] items-center gap-1 rounded-md border border-success/30 bg-[var(--soma-success-soft)] px-2 text-[11.5px] font-semibold tracking-tight text-success">
+          {isLocked ? "확정됨" : "참여 중"}
+        </span>
+        <AutoDeleteBadge expiresAt={meeting.expires_at} />
+      </div>
+
+      <div className="flex items-start gap-3">
+        <h1 className="flex-1 min-w-0 text-2xl font-extrabold leading-tight tracking-[-0.6px] text-foreground lg:text-[28px]">
+          {meeting.title}
+        </h1>
         {!isLocked ? (
-          <Button
+          <button
             type="button"
-            variant="outline"
-            size="sm"
             onClick={() => setEditing(true)}
             aria-label="회의 설정 수정"
             data-testid="edit-meeting-toggle"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-border bg-background text-[color:var(--soma-ink-soft)] transition-colors hover:bg-card"
           >
-            <Pencil className="h-3.5 w-3.5" />
-            설정 수정
-          </Button>
+            <Pencil className="h-4 w-4" />
+          </button>
         ) : null}
-      </CardHeader>
-      <CardContent className="flex flex-col gap-6">
-        <CopyableUrl label="초대 링크" url={meeting.share_url} showQr />
-        <dl className="grid gap-4 text-sm sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              날짜
-            </dt>
-            <dd className="mt-1 text-foreground">{formatDateScope(meeting)}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              회의 길이
-            </dt>
-            <dd className="mt-1 text-foreground">{meeting.duration_minutes}분</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              진행 방식
-            </dt>
-            <dd className="mt-1 text-foreground">
-              {LOCATION_LABEL[meeting.location_type]}
-            </dd>
-          </div>
-          <div className="sm:col-span-2">
-            <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              제출 현황
-            </dt>
-            <dd className="mt-1 text-foreground" data-testid="progress-text">
-              {submitted}명 제출 완료
-            </dd>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {ready
-                ? "결과를 확인할 준비가 됐습니다."
-                : "최소 1명이 제출하면 결과를 볼 수 있습니다."}
-            </p>
-            <div
-              role="progressbar"
-              aria-valuemin={0}
-              aria-valuenow={submitted}
-              className="mt-2 h-2 overflow-hidden rounded-full bg-secondary"
-            >
-              <div
-                className={cn(
-                  "h-full transition-all",
-                  ready ? "bg-success" : "bg-primary",
-                )}
-                style={{ width: ready ? "100%" : "0%" }}
-                data-testid="progress-bar-fill"
-              />
-            </div>
-            {(meeting.submitted_nicknames ?? []).length > 0 ? (
-              <ul
-                className="mt-3 flex flex-wrap gap-1.5"
-                aria-label="제출 완료한 참여자"
-                data-testid="submitted-nicknames"
-              >
-                {(meeting.submitted_nicknames ?? []).map((nickname) => {
-                  const required = (meeting.required_nicknames ?? []).includes(nickname)
-                  return (
-                  <li
-                    key={nickname}
-                    className={
-                      required
-                        ? "inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/15 px-2.5 py-0.5 text-xs font-medium text-primary"
-                        : "inline-flex items-center gap-1 rounded-full border border-success/30 bg-success/10 px-2.5 py-0.5 text-xs font-medium text-success"
-                    }
-                    title={required ? "필수 참여자" : undefined}
-                  >
-                    <span aria-hidden="true">{required ? "★" : "✓"}</span>
-                    <span>{nickname}</span>
-                  </li>
-                  )
-                })}
-              </ul>
-            ) : null}
-            {/* v3.11 — required-but-not-yet-submitted callout */}
-            {(() => {
-              const submitted = new Set(meeting.submitted_nicknames ?? [])
-              const requiredPending = (meeting.required_nicknames ?? []).filter(
-                (n) => !submitted.has(n),
-              )
-              if (requiredPending.length === 0) return null
-              return (
-                <p
-                  className="mt-3 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-1.5 text-xs text-primary"
-                  data-testid="required-pending"
-                >
-                  ★ 필수 참여자 미제출: {requiredPending.join(", ")}
-                </p>
-              )
-            })()}
-          </div>
+      </div>
 
-          {meeting.confirmed_slot ? (
-            <div className="sm:col-span-2 rounded-md border border-primary/30 bg-primary/10 p-3 text-primary">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <dt className="text-xs font-semibold uppercase tracking-wide">확정된 시각</dt>
-                  <dd className="mt-1 font-medium">
-                    {formatKstRange(meeting.confirmed_slot.start, meeting.confirmed_slot.end)}
-                  </dd>
-                </div>
-                {onCancelConfirm ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCancelDialogOpen(true)}
-                    disabled={startInPast}
-                    aria-label="회의 확정 취소"
-                    data-testid="cancel-confirm"
-                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  >
-                    확정 취소
-                  </Button>
-                ) : null}
+      <div className="flex flex-wrap items-center gap-3 text-[13.5px] font-medium text-muted-foreground lg:gap-5">
+        <span className="inline-flex items-center gap-1.5">
+          <CalendarIcon className="h-3.5 w-3.5" aria-hidden="true" />
+          {formatDateScope(meeting)}
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <Clock className="h-3.5 w-3.5" aria-hidden="true" />
+          {meeting.duration_minutes}분
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
+          {LOCATION_LABEL[meeting.location_type]}
+        </span>
+      </div>
+
+      <InviteShareRow url={meeting.share_url} />
+
+      <div className="mt-1">
+        <div className="flex items-baseline justify-between gap-3">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            제출 현황
+          </div>
+          <div className="text-sm font-medium text-foreground" data-testid="progress-text">
+            {submitted}명 제출 완료
+          </div>
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {ready
+            ? "결과를 확인할 준비가 됐습니다."
+            : "최소 1명이 제출하면 결과를 볼 수 있습니다."}
+        </p>
+        <div
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuenow={submitted}
+          className="mt-2 h-2 overflow-hidden rounded-full bg-secondary"
+        >
+          <div
+            className={cn(
+              "h-full transition-all",
+              ready ? "bg-success" : "bg-primary",
+            )}
+            style={{ width: ready ? "100%" : "0%" }}
+            data-testid="progress-bar-fill"
+          />
+        </div>
+      </div>
+
+      {meeting.confirmed_slot ? (
+        <div className="rounded-xl border border-primary/30 bg-[var(--soma-primary-soft)] p-4 text-primary">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-xs font-semibold uppercase tracking-wider">확정된 시각</div>
+              <div className="mt-1 font-semibold">
+                {formatKstRange(meeting.confirmed_slot.start, meeting.confirmed_slot.end)}
               </div>
-              {startInPast ? (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  회의 시작 시각이 지나 취소할 수 없습니다.
-                </p>
-              ) : null}
-              {meeting.confirmed_share_message ? (
-                <dd className="mt-2 whitespace-pre-wrap rounded bg-background/80 p-2 text-xs text-foreground">
-                  {meeting.confirmed_share_message}
-                </dd>
-              ) : null}
+            </div>
+            {onCancelConfirm ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCancelDialogOpen(true)}
+                disabled={startInPast}
+                aria-label="회의 확정 취소"
+                data-testid="cancel-confirm"
+                className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+              >
+                확정 취소
+              </Button>
+            ) : null}
+          </div>
+          {startInPast ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              회의 시작 시각이 지나 취소할 수 없습니다.
+            </p>
+          ) : null}
+          {meeting.confirmed_share_message ? (
+            <div className="mt-2 whitespace-pre-wrap rounded bg-background/80 p-2 text-xs text-foreground">
+              {meeting.confirmed_share_message}
             </div>
           ) : null}
-        </dl>
-      </CardContent>
+        </div>
+      ) : null}
+
       <EditMeetingDialog
         open={editing}
         onOpenChange={setEditing}
@@ -302,6 +255,6 @@ export function MeetingSummary({
           </div>
         </Dialog>
       ) : null}
-    </Card>
+    </section>
   )
 }
