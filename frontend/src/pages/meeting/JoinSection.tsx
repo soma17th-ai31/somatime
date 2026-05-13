@@ -26,6 +26,7 @@ import { useToast } from "@/components/ui/toast"
 import { api } from "@/lib/api"
 import { ApiError, type LocationType, type MeetingDetail } from "@/lib/types"
 import { cn } from "@/lib/cn"
+import { formatMeetingTitle } from "@/lib/meetingTitle"
 
 const PIN_REGEX = /^\d{4}$/
 
@@ -121,7 +122,7 @@ export function JoinSection({ slug, meeting, locationType, onJoined }: Props) {
               참여 요청
             </div>
             <h2 className="mt-2 text-[18px] font-extrabold leading-tight tracking-[-0.4px] text-foreground lg:text-[20px]">
-              {meeting.title.trim() || "(제목 없음)"}
+              {formatMeetingTitle(meeting.title)}
             </h2>
             <div className="mt-2.5 flex flex-wrap gap-3 text-[12.5px] font-medium text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">

@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button"
 import { Dialog, DialogDescription, DialogFooter, DialogTitle } from "@/components/ui/dialog"
 import type { MeetingDetail } from "@/lib/types"
 import { formatKstRange } from "@/lib/datetime"
+import { formatMeetingTitle } from "@/lib/meetingTitle"
 import { cn } from "@/lib/cn"
 import { EditMeetingDialog } from "./EditMeetingDialog"
 import { InviteShareRow } from "./InviteShareRow"
@@ -99,7 +100,7 @@ export function MeetingSummary({
 
       <div className="flex items-start gap-3">
         <h1 className="flex-1 min-w-0 text-2xl font-extrabold leading-tight tracking-[-0.6px] text-foreground lg:text-[28px]">
-          {meeting.title}
+          {formatMeetingTitle(meeting.title)}
         </h1>
         {!isLocked ? (
           <button
