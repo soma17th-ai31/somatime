@@ -5,6 +5,9 @@ import { DayPicker } from "react-day-picker"
 import { buttonVariants } from "@/components/ui/button"
 import { cn } from "@/lib/cn"
 
+// v3 — Cap the calendar width so cells stay around mockup's 36-44px instead of
+// stretching with the parent container, and drop the day-button's ghost
+// transition so selection feedback feels immediate.
 function Calendar({
   className,
   classNames,
@@ -14,7 +17,7 @@ function Calendar({
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
-      className={cn("p-0", className)}
+      className={cn("mx-auto w-full max-w-[336px] p-0", className)}
       classNames={{
         root: "w-full",
         // v9 DOM: <Months> contains <Nav> (default navLayout) followed by <Month>s.
@@ -24,10 +27,6 @@ function Calendar({
         month: "flex w-full flex-col gap-3",
         month_caption: "flex h-10 items-center justify-center",
         caption_label: "text-sm font-semibold tracking-tight text-foreground",
-        // Nav is rendered as a Months-level sibling, NOT inside month_caption.
-        // Pin it to the top row of the calendar and let the buttons sit at the
-        // edges; pointer-events-none on the container avoids blocking caption
-        // hits while the buttons themselves opt back in.
         nav: "pointer-events-none absolute inset-x-0 top-0 z-[1] flex h-10 items-center justify-between px-1",
         button_previous: cn(
           buttonVariants({ variant: "outline", size: "icon" }),
@@ -43,13 +42,15 @@ function Calendar({
           "flex-1 py-1 text-center text-[0.78rem] font-semibold text-muted-foreground",
         week: "mt-1 flex w-full",
         // flex-1 + aspect-square spreads cells across the full container width
-        // while keeping them square. day_button stretches to fill so the row
-        // stays uniform regardless of viewport.
+        // while keeping them square. Combined with the outer max-w-[336px]
+        // this lands cells around ~44px on desktop and ~40px on mobile —
+        // close enough to mockup's 36px without forcing a fixed pixel size.
         day: "relative flex-1 aspect-square p-0 text-center text-sm focus-within:relative focus-within:z-20",
-        day_button: cn(
-          buttonVariants({ variant: "ghost" }),
-          "h-full w-full p-0 font-medium aria-selected:opacity-100",
-        ),
+        // Plain button (no ghost variant) so the click→fill change isn't
+        // delayed by the ghost's hover transition. We keep focus-ring styling
+        // for keyboard users via :focus-visible.
+        day_button:
+          "flex h-full w-full items-center justify-center rounded-md p-0 text-sm font-medium text-foreground outline-none transition-none hover:bg-card focus-visible:ring-2 focus-visible:ring-ring/50 aria-selected:opacity-100 disabled:pointer-events-none disabled:opacity-50",
         // Soma mockup matching. `!` flags are required because range_middle
         // and `selected` are both attached to the same day element — without
         // forcing precedence, `selected`'s bg-primary wins over the softer
