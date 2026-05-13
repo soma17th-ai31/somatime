@@ -83,12 +83,12 @@ export function ShareMessageDialog({
             </span>
           )}
           <DialogTitle id="share-message-title">
-            {readOnly ? "확정 안내 메시지" : "메시지 확인 후 확정"}
+            {readOnly ? "확정 안내 메시지" : "메시지 확인 후 확정해 주세요"}
           </DialogTitle>
           <DialogDescription>
             {readOnly
               ? `${confirmedRange} 회의가 확정되었습니다. 메시지를 복사해 팀원에게 공유해주세요.`
-              : `${confirmedRange}. 메시지를 다듬고 확정 버튼을 눌러주세요. 확정하면 가용 시간 입력이 종료됩니다.`}
+              : "확정하면 참여자에게 알림이 전송되고, 가용 시간 입력이 종료됩니다."}
           </DialogDescription>
         </div>
         <button
@@ -122,7 +122,7 @@ export function ShareMessageDialog({
         </Button>
         <Button onClick={handleCopy} variant="secondary">
           <Copy className="h-3.5 w-3.5" />
-          메시지 복사
+          공지 복사
         </Button>
         {!readOnly && onConfirm ? (
           <Button

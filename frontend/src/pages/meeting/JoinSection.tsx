@@ -18,7 +18,6 @@ import {
   Calendar as CalendarIcon,
   Clock,
   MapPin,
-  Star,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,6 +26,7 @@ import { useToast } from "@/components/ui/toast"
 import { api } from "@/lib/api"
 import { ApiError, type LocationType, type MeetingDetail } from "@/lib/types"
 import { cn } from "@/lib/cn"
+import { formatMeetingTitle } from "@/lib/meetingTitle"
 
 const PIN_REGEX = /^\d{4}$/
 
@@ -122,7 +122,7 @@ export function JoinSection({ slug, meeting, locationType, onJoined }: Props) {
               참여 요청
             </div>
             <h2 className="mt-2 text-[18px] font-extrabold leading-tight tracking-[-0.4px] text-foreground lg:text-[20px]">
-              {meeting.title}
+              {formatMeetingTitle(meeting.title)}
             </h2>
             <div className="mt-2.5 flex flex-wrap gap-3 text-[12.5px] font-medium text-muted-foreground">
               <span className="inline-flex items-center gap-1.5">
@@ -182,14 +182,14 @@ export function JoinSection({ slug, meeting, locationType, onJoined }: Props) {
                 id="join-pin-input"
                 value={pin}
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                placeholder="4자리 숫자"
+                placeholder="1234"
                 inputMode="numeric"
                 maxLength={4}
                 autoComplete="off"
                 aria-invalid={pinError ? "true" : undefined}
                 data-testid="join-pin"
                 className={cn(
-                  "font-mono tracking-[0.4em]",
+                  "text-center font-mono text-lg [letter-spacing:6px] placeholder:tracking-normal placeholder:text-muted-foreground/60",
                   pinError && "border-destructive focus-visible:border-destructive",
                 )}
               />
@@ -262,39 +262,48 @@ interface ToggleRowProps {
   testId?: string
 }
 
+// iOS-style toggle switch matching soma-meeting.jsx ToggleRow (L569). The
+// previous version used a checkbox + Star icon; the mockup expects a real
+// switch. data-testid is preserved on the outer button so e2e selectors that
+// previously targeted the checkbox keep working as a click target.
 function ToggleRow({ checked, onChange, title, description, testId }: ToggleRowProps) {
   return (
-    <label
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      data-testid={testId}
       className={cn(
-        "flex cursor-pointer items-start gap-3 rounded-xl border bg-background p-3 transition-colors",
+        "flex w-full items-center gap-3 rounded-xl border bg-background px-3.5 py-3 text-left transition-colors",
         checked
           ? "border-primary bg-[var(--soma-primary-soft)]"
           : "border-border hover:bg-card",
       )}
     >
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="mt-1 h-4 w-4 rounded border-border accent-primary"
-        data-testid={testId}
-      />
-      <div className="flex-1">
-        <div className="flex items-center gap-1.5 text-sm font-bold text-foreground">
-          <Star
-            className={cn(
-              "h-3.5 w-3.5",
-              checked ? "text-primary" : "text-muted-foreground",
-            )}
-            aria-hidden="true"
-          />
+      <div className="min-w-0 flex-1">
+        <div className="text-[13.5px] font-bold tracking-tight text-foreground">
           {title}
         </div>
         <div className="mt-0.5 text-xs leading-snug text-muted-foreground">
           {description}
         </div>
       </div>
-    </label>
+      <span
+        aria-hidden="true"
+        className={cn(
+          "relative inline-block h-5 w-9 shrink-0 rounded-full transition-colors",
+          checked ? "bg-primary" : "bg-border",
+        )}
+      >
+        <span
+          className={cn(
+            "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-[0_1px_2px_rgba(15,23,42,0.18)] transition-all",
+            checked ? "left-[18px]" : "left-0.5",
+          )}
+        />
+      </span>
+    </button>
   )
 }
 

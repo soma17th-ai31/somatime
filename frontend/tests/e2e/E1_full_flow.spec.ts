@@ -204,17 +204,26 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   const slug = slugMatch![1]
   // The share URL is the URL bar itself.
   const shareUrl = currentUrl
-  // Meeting summary loads on the destination page.
+  // v4 Phase F follow-up: until joined, the page renders only JoinSection.
+  // Verify the join form is presented (no MeetingSummary yet).
+  await expect(organizer.locator('[data-testid="join-form"]')).toBeVisible()
+
+  // Organizer registers themselves as a participant so the full meeting UI
+  // (MeetingSummary + result buttons) is unlocked for the rest of the test.
+  await organizer.locator('[data-testid="join-nickname"]').fill("주최자")
+  await organizer.locator('[data-testid="join-pin"]').fill("9999")
+  await organizer.locator('[data-testid="join-submit"]').click()
   await expect(organizer.locator('[data-testid="meeting-summary"]')).toBeVisible()
 
   // -------- step 5: shared URL in incognito context -> page loads (Path B) --------
   // v3.2 Path B: pick / 확정 buttons are intentionally available everywhere —
   // anyone with the share URL can confirm. The accident safeguard is the
-  // 2-step ShareMessageDialog. Just verify the summary renders here.
+  // 2-step ShareMessageDialog itself. In v4 Phase F, an unjoined visitor only
+  // sees JoinSection (full UI gated), so we assert that here.
   const peekContext = await browser.newContext()
   const peek = await peekContext.newPage()
   await peek.goto(shareUrl)
-  await expect(peek.locator('[data-testid="meeting-summary"]')).toBeVisible()
+  await expect(peek.locator('[data-testid="join-form"]')).toBeVisible()
   await peekContext.close()
 
   // -------- step 6 + 7: three participants register (with optional PIN) and submit manual --------
@@ -335,7 +344,7 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   const dialogTitle = organizer.locator("#share-message-title")
   await expect(dialogTitle).toBeVisible({ timeout: 15_000 })
   // Pre-confirm dialog title — see ShareMessageDialog (readOnly=false).
-  await expect(dialogTitle).toHaveText("메시지 확인 후 확정")
+  await expect(dialogTitle).toHaveText("메시지 확인 후 확정해 주세요")
 
   const textarea = organizer.locator('[data-testid="share-draft-textarea"]')
   await expect(textarea).toBeVisible()
@@ -347,7 +356,7 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   expect(message).not.toMatch(/병원|진료|데이트/)
 
   // Copy button -> clipboard stub captures the message.
-  await organizer.getByRole("button", { name: "메시지 복사" }).click()
+  await organizer.getByRole("dialog").getByRole("button", { name: "공지 복사" }).click()
   await expect(organizer.locator("text=메시지가 복사되었습니다.")).toBeVisible({
     timeout: 5_000,
   })
