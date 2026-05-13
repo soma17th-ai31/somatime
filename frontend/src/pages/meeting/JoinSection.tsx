@@ -155,8 +155,12 @@ export function JoinSection({ slug, locationType, onJoined }: Props) {
                 autoComplete="off"
                 aria-invalid={pinError ? "true" : undefined}
                 data-testid="join-pin"
+                style={{
+                  fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace",
+                  letterSpacing: "6px",
+                }}
                 className={cn(
-                  "text-center font-mono text-lg [letter-spacing:6px] placeholder:tracking-normal placeholder:text-muted-foreground/60",
+                  "text-base placeholder:tracking-normal placeholder:font-sans placeholder:text-muted-foreground/60",
                   pinError && "border-destructive focus-visible:border-destructive",
                 )}
               />

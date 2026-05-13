@@ -19,7 +19,6 @@ import { Dialog, DialogDescription, DialogFooter, DialogTitle } from "@/componen
 import type { MeetingDetail } from "@/lib/types"
 import { formatKstRange } from "@/lib/datetime"
 import { formatMeetingTitle } from "@/lib/meetingTitle"
-import { cn } from "@/lib/cn"
 import { EditMeetingDialog } from "./EditMeetingDialog"
 import { InviteShareRow } from "./InviteShareRow"
 import { AutoDeleteBadge } from "./AutoDeleteBadge"
@@ -61,8 +60,6 @@ export function MeetingSummary({
   onSettingsSaved,
   onCancelConfirm,
 }: Props) {
-  const submitted = meeting.submitted_count ?? 0
-  const ready = meeting.is_ready_to_calculate ?? submitted >= 1
   const [editing, setEditing] = useState(false)
   const isLocked = Boolean(meeting.confirmed_slot)
 
@@ -131,37 +128,6 @@ export function MeetingSummary({
       </div>
 
       <InviteShareRow url={meeting.share_url} />
-
-      <div className="mt-1">
-        <div className="flex items-baseline justify-between gap-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            제출 현황
-          </div>
-          <div className="text-sm font-medium text-foreground" data-testid="progress-text">
-            {submitted}명 제출 완료
-          </div>
-        </div>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {ready
-            ? "결과를 확인할 준비가 됐습니다."
-            : "최소 1명이 제출하면 결과를 볼 수 있습니다."}
-        </p>
-        <div
-          role="progressbar"
-          aria-valuemin={0}
-          aria-valuenow={submitted}
-          className="mt-2 h-2 overflow-hidden rounded-full bg-secondary"
-        >
-          <div
-            className={cn(
-              "h-full transition-all",
-              ready ? "bg-success" : "bg-primary",
-            )}
-            style={{ width: ready ? "100%" : "0%" }}
-            data-testid="progress-bar-fill"
-          />
-        </div>
-      </div>
 
       {meeting.confirmed_slot ? (
         <div className="rounded-xl border border-primary/30 bg-[var(--soma-primary-soft)] p-4 text-primary">

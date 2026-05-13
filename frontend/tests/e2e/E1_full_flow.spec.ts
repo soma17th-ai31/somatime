@@ -290,8 +290,7 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   // is "0명 제출 완료" (no submissions yet), NOT "1/3 disabled" as in v3.
   await organizer.reload()
   await expect(organizer.locator('[data-testid="meeting-summary"]')).toBeVisible()
-  await expect(organizer.locator('[data-testid="progress-text"]')).toContainText("0")
-  await expect(organizer.locator('[data-testid="progress-text"]')).toContainText("제출 완료")
+  await expect(organizer.locator('[data-testid="participants-card"]')).toContainText("0명 제출")
   await expect(organizer.locator('[data-testid="calculate-button"]')).toBeDisabled()
   await expect(organizer.locator('[data-testid="recommend-button"]')).toBeDisabled()
 
@@ -310,7 +309,7 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
 
   await organizer.reload()
   await expect(organizer.locator('[data-testid="meeting-summary"]')).toBeVisible()
-  await expect(organizer.locator('[data-testid="progress-text"]')).toContainText("3")
+  await expect(organizer.locator('[data-testid="participants-card"]')).toContainText("3명 제출")
   await expect(organizer.locator('[data-testid="calculate-button"]')).toBeEnabled({
     timeout: 5_000,
   })
