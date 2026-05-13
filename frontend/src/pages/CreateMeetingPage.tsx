@@ -4,7 +4,11 @@
 // v3.1 simplify pass (2026-05-06):
 //   - "참여 인원 (target)" input removed entirely.
 // v4 (2026-05-13) — Soma redesign:
-//   - 2-column desktop layout (1.4fr form : 1fr sticky SharePreviewCard).
+//   - Single-column centered form (max 680px). The earlier 2-column
+//     layout with a sticky SharePreviewCard on the right was dropped
+//     in favor of a focused form view — the share preview was a
+//     placeholder anyway (real URL/QR only exist after submit), and
+//     the page navigates straight to the meeting detail on success.
 //   - Duration switched from <select> to segmented testid buttons
 //     (duration-30/60/90/120) for visual consistency with location.
 //   - TopBar reduced to the SomaMeet wordmark; "도움말" removed.
@@ -37,7 +41,6 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { DateRangeOrPicker } from "@/components/DateRangeOrPicker"
 import { useToast } from "@/components/ui/toast"
 import { cn } from "@/lib/cn"
-import { SharePreviewCard } from "@/pages/meeting/SharePreviewCard"
 
 const dateRegex = /^\d{4}-\d{2}-\d{2}$/
 const TITLE_MAX = 60
@@ -130,7 +133,7 @@ export default function CreateMeetingPage() {
 
   // Top-level useForm — note we deliberately do NOT call `watch()` here.
   // Calling `watch()` at the component root makes every field change trigger
-  // a re-render of the entire page (including DayPicker + SharePreviewCard),
+  // a re-render of the entire page (including the DayPicker subtree),
   // which causes the "calendar click feels laggy" report. Instead, individual
   // sub-fields read their own values via Controller render-props or useWatch.
   const {
@@ -378,18 +381,7 @@ export default function CreateMeetingPage() {
           </p>
         </header>
 
-        {/* Desktop: 2-column with sticky SharePreview on the right. */}
-        <div className="grid gap-8 lg:grid-cols-[1.4fr_1fr] lg:items-start lg:gap-10">
-          <div>{form}</div>
-          <aside className="hidden lg:block lg:sticky lg:top-6">
-            <SharePreviewCard />
-          </aside>
-        </div>
-
-        {/* Mobile: inline SharePreview below the form. */}
-        <div className="mt-6 lg:hidden">
-          <SharePreviewCard inline />
-        </div>
+        <div className="mx-auto w-full max-w-[680px]">{form}</div>
       </main>
     </div>
   )
@@ -402,7 +394,7 @@ interface TitleFieldProps {
 }
 
 // Isolated so keystroke-driven character-count updates don't re-render the
-// page (and DayPicker + SharePreviewCard) — only this fragment is reactive
+// page (and the DayPicker subtree) — only this fragment is reactive
 // to the `title` field via useWatch's own subscription.
 function TitleField({ control, register, errors }: TitleFieldProps) {
   const titleValue = useWatch({ control, name: "title" }) ?? ""
