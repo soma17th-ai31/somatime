@@ -104,7 +104,7 @@ export function NaturalLanguageAvailabilityForm({ slug, meeting, onApply }: Prop
         <div
           aria-label="자연어 파싱 결과 미리보기"
           data-testid="nl-preview-grid"
-          className="pointer-events-none opacity-90 [&_*]:cursor-default"
+          className="opacity-90"
           aria-readonly="true"
         >
           <AvailabilityGrid
