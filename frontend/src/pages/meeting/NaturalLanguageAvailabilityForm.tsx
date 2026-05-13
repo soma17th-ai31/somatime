@@ -192,17 +192,8 @@ export function NaturalLanguageAvailabilityForm({ slug, meeting, onApply }: Prop
       }
       action={<StateBadge stage={stage} />}
     >
-      {stage === "empty" ? (
+      {stage === "empty" || stage === "typing" ? (
         <EmptyView
-          text={text}
-          onTextChange={setText}
-          onExampleClick={appendExample}
-          onPreview={handlePreview}
-        />
-      ) : null}
-
-      {stage === "typing" ? (
-        <TypingView
           text={text}
           onTextChange={setText}
           onExampleClick={appendExample}
@@ -357,6 +348,7 @@ interface EmptyViewProps {
 }
 
 function EmptyView({ text, onTextChange, onExampleClick, onPreview }: EmptyViewProps) {
+  const hasText = text.trim().length > 0
   return (
     <div className="flex flex-col">
       <div className="flex flex-col items-center px-2 pb-2 pt-6 text-center">
@@ -377,57 +369,20 @@ function EmptyView({ text, onTextChange, onExampleClick, onPreview }: EmptyViewP
       </div>
 
       <div className="mt-4">
-        <div className="text-xs font-semibold text-muted-foreground">이런 문장을 인식해요</div>
-        <ExampleChips onPick={onExampleClick} />
-      </div>
-
-      <div className="mt-5 flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-[color:var(--soma-faint)]">
-          입력 후 미리보기를 누르면 결과를 볼 수 있어요
-        </span>
-        <Button
-          type="button"
-          data-testid="nl-preview"
-          disabled
-          onClick={onPreview}
-        >
-          <Sparkles className="h-3.5 w-3.5" />
-          미리보기 생성
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-// ---------- typing ----------
-
-interface TypingViewProps {
-  text: string
-  onTextChange: (v: string) => void
-  onExampleClick: (v: string) => void
-  onPreview: () => void
-}
-
-function TypingView({ text, onTextChange, onExampleClick, onPreview }: TypingViewProps) {
-  return (
-    <div className="flex flex-col gap-4">
-      <NLTextarea value={text} onChange={onTextChange} placeholder={PLACEHOLDER} />
-
-      {/* Decided: no recognized-phrase chips here — the LLM hasn't run yet,
-          so any chips would be guesses. Example chips stay visible to seed
-          longer prompts. */}
-      <div>
-        <div className="text-xs font-medium text-muted-foreground">
-          이렇게 적어보세요
+        <div className="text-xs font-semibold text-muted-foreground">
+          {hasText ? "이렇게 적어보세요" : "이런 문장을 인식해요"}
         </div>
         <ExampleChips onPick={onExampleClick} />
       </div>
 
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-muted-foreground">준비됐어요</span>
+      <div className="mt-5 flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-muted-foreground">
+          {hasText ? "준비됐어요" : "입력 후 미리보기를 누르면 결과를 볼 수 있어요"}
+        </span>
         <Button
           type="button"
           data-testid="nl-preview"
+          disabled={!hasText}
           onClick={onPreview}
         >
           <Sparkles className="h-3.5 w-3.5" />
