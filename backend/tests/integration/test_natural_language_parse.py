@@ -47,6 +47,9 @@ def test_template_mode_returns_empty_blocks_with_summary(client) -> None:
     body = resp.json()
     assert body["busy_blocks"] == []
     assert isinstance(body["summary"], str) and body["summary"]
+    # Phase D — recognized_phrases is always present; template adapter
+    # produces an empty list.
+    assert body["recognized_phrases"] == []
 
 
 def test_empty_text_returns_422(client) -> None:
@@ -108,6 +111,7 @@ def test_llm_parsed_blocks_pass_through(client, monkeypatch) -> None:
                     },
                 ],
                 "summary": "월 오전 + 화 저녁 이후 불가능.",
+                "recognized_phrases": ["월 9-12시 불가", "화 19시~ 불가"],
             }
 
     monkeypatch.setattr(
@@ -129,6 +133,7 @@ def test_llm_parsed_blocks_pass_through(client, monkeypatch) -> None:
         {"start": "2026-05-11T09:00:00", "end": "2026-05-11T12:00:00"},
         {"start": "2026-05-12T19:00:00", "end": "2026-05-13T00:00:00"},
     ]
+    assert body["recognized_phrases"] == ["월 9-12시 불가", "화 19시~ 불가"]
 
 
 def test_llm_blocks_outside_meeting_dates_are_dropped(client, monkeypatch) -> None:
@@ -219,6 +224,117 @@ def test_llm_network_error_returns_503(client, monkeypatch) -> None:
     )
     assert resp.status_code == 503
     assert resp.json()["error_code"] == "llm_unavailable"
+
+
+def test_recognized_phrases_missing_key_normalizes_to_empty_list(
+    client, monkeypatch
+) -> None:
+    """LLM omitting recognized_phrases yields []; response field still present."""
+
+    class _FakeAdapter:
+        def parse_availability(self, text, meeting):
+            return {
+                "busy_blocks": [
+                    {"start": "2026-05-12T09:00:00", "end": "2026-05-12T10:00:00"},
+                ],
+                "summary": "ok",
+                # no recognized_phrases key
+            }
+
+    monkeypatch.setattr(
+        "app.api.availability.get_llm_adapter", lambda *a, **k: _FakeAdapter()
+    )
+
+    data = _create_meeting(client)
+    slug = data["slug"]
+    _register(client, slug)
+
+    resp = client.post(
+        f"/api/meetings/{slug}/availability/natural-language/parse",
+        json={"text": "월 9-10"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["recognized_phrases"] == []
+
+
+def test_recognized_phrases_drops_malformed_and_caps_length(
+    client, monkeypatch
+) -> None:
+    """Non-string / empty entries are dropped; long phrases truncated to 24 chars;
+    list is capped at 6 entries."""
+
+    class _FakeAdapter:
+        def parse_availability(self, text, meeting):
+            return {
+                "busy_blocks": [],
+                "summary": "ok",
+                "recognized_phrases": [
+                    "월 9-12시 불가",          # keep
+                    "",                          # drop (empty)
+                    "   ",                       # drop (blank)
+                    123,                         # drop (non-string)
+                    None,                        # drop (non-string)
+                    {"x": 1},                    # drop (non-string)
+                    "이건 정말 정말 정말 정말 정말 정말 긴 표현입니다",  # truncated to 24 chars
+                    "화 ~18시 가능",
+                    "수 종일 가능",
+                    "목 12-18시",
+                    "금 ~18시",
+                    "주말 없음",
+                    "이건 잘려나갈 7번째",       # over the 6-item cap
+                ],
+            }
+
+    monkeypatch.setattr(
+        "app.api.availability.get_llm_adapter", lambda *a, **k: _FakeAdapter()
+    )
+
+    data = _create_meeting(client)
+    slug = data["slug"]
+    _register(client, slug)
+
+    resp = client.post(
+        f"/api/meetings/{slug}/availability/natural-language/parse",
+        json={"text": "월 9-12, 등등"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    phrases = body["recognized_phrases"]
+    assert len(phrases) == 6
+    assert phrases[0] == "월 9-12시 불가"
+    # The long entry survived (1st valid string after the drops) and was
+    # truncated to 24 characters.
+    assert len(phrases[1]) <= 24
+    assert phrases[1].startswith("이건 정말")
+
+
+def test_recognized_phrases_non_list_drops_to_empty(client, monkeypatch) -> None:
+    """If the LLM returns recognized_phrases as a non-list (e.g. a string),
+    we coerce it to []."""
+
+    class _FakeAdapter:
+        def parse_availability(self, text, meeting):
+            return {
+                "busy_blocks": [],
+                "summary": "ok",
+                "recognized_phrases": "월 9-12시 불가",  # wrong type
+            }
+
+    monkeypatch.setattr(
+        "app.api.availability.get_llm_adapter", lambda *a, **k: _FakeAdapter()
+    )
+
+    data = _create_meeting(client)
+    slug = data["slug"]
+    _register(client, slug)
+
+    resp = client.post(
+        f"/api/meetings/{slug}/availability/natural-language/parse",
+        json={"text": "월 9-12"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["recognized_phrases"] == []
 
 
 def test_llm_value_error_returns_500_llm_parse_failed(client, monkeypatch) -> None:

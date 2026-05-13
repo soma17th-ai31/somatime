@@ -31,6 +31,8 @@ def test_template_parse_availability_returns_empty_blocks_with_summary() -> None
     assert out["busy_blocks"] == []
     assert isinstance(out["summary"], str)
     assert "템플릿" in out["summary"]
+    # Phase D — chip phrases default to an empty list in template mode.
+    assert out["recognized_phrases"] == []
 
 
 def test_parse_availability_payload_includes_meeting_dates_and_window() -> None:
