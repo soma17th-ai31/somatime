@@ -66,4 +66,5 @@ class TemplateAdapter(LLMAdapter):
                 "템플릿 모드에서는 자연어 파싱을 지원하지 않습니다. "
                 "수동 입력 또는 ICS 업로드를 사용해주세요."
             ),
+            "recognized_phrases": [],
         }

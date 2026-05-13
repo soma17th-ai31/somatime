@@ -166,26 +166,36 @@ def parse_natural_language_availability(
             },
         ) from exc
 
-    busy_blocks, summary = _normalize_nl_parse_output(raw, meeting)
+    busy_blocks, summary, recognized_phrases = _normalize_nl_parse_output(raw, meeting)
     return {
         "busy_blocks": busy_blocks,
         "summary": summary,
+        "recognized_phrases": recognized_phrases,
     }
+
+
+# Phase D — chip phrases are short Korean strings (e.g. "월 9-12시 불가").
+# We cap them at 24 chars (≈12 Korean chars) and clip the list to 6 to keep
+# the FE preview readable.
+_MAX_PHRASE_LEN = 24
+_MAX_PHRASES = 6
 
 
 def _normalize_nl_parse_output(
     raw: dict,
     meeting: Meeting,
-) -> tuple[list[dict], str]:
+) -> tuple[list[dict], str, list[str]]:
     """Defensive parser around the LLM's natural-language output.
 
     Drops anything malformed silently (the FE shows what we kept; users can
-    edit the grid before saving). Returns (busy_blocks, summary) where
-    busy_blocks is a list of {"start": ISO str, "end": ISO str} — datetimes
-    are normalized to KST naive ISO strings to match parse_ics_preview.
+    edit the grid before saving). Returns
+    ``(busy_blocks, summary, recognized_phrases)`` where busy_blocks is a list
+    of {"start": ISO str, "end": ISO str} (KST-naive, matching
+    parse_ics_preview) and recognized_phrases is a list of short Korean
+    strings used as preview chips on the FE.
     """
     if not isinstance(raw, dict):
-        return [], "응답을 해석하지 못했습니다."
+        return [], "응답을 해석하지 못했습니다.", []
 
     summary_raw = raw.get("summary")
     summary = (
@@ -194,9 +204,11 @@ def _normalize_nl_parse_output(
         else "자연어 입력을 불가능 시간으로 변환했습니다."
     )
 
+    recognized_phrases = _normalize_recognized_phrases(raw.get("recognized_phrases"))
+
     raw_blocks = raw.get("busy_blocks")
     if not isinstance(raw_blocks, list):
-        return [], summary
+        return [], summary, recognized_phrases
 
     normalized: list[dict] = []
     for block in raw_blocks:
@@ -224,7 +236,33 @@ def _normalize_nl_parse_output(
         normalized.append(
             {"start": start_dt.isoformat(), "end": end_dt.isoformat()}
         )
-    return normalized, summary
+    return normalized, summary, recognized_phrases
+
+
+def _normalize_recognized_phrases(raw_phrases) -> list[str]:
+    """Filter the LLM's recognized_phrases to a clean string list.
+
+    - Missing / non-list -> [].
+    - Non-string items, empty strings, blank-only strings -> dropped.
+    - Each kept phrase is stripped and truncated to _MAX_PHRASE_LEN chars.
+    - Whole list is capped at _MAX_PHRASES entries.
+    """
+    if not isinstance(raw_phrases, list):
+        return []
+
+    cleaned: list[str] = []
+    for item in raw_phrases:
+        if not isinstance(item, str):
+            continue
+        phrase = item.strip()
+        if not phrase:
+            continue
+        if len(phrase) > _MAX_PHRASE_LEN:
+            phrase = phrase[:_MAX_PHRASE_LEN]
+        cleaned.append(phrase)
+        if len(cleaned) >= _MAX_PHRASES:
+            break
+    return cleaned
 
 
 def _block_intersects_meeting_dates(
