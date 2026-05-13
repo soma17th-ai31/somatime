@@ -239,6 +239,15 @@ export function TimetableSection({
             participantCount={Math.max(submitted, 1)}
             submittedNicknames={meeting.submitted_nicknames ?? []}
             currentNickname={currentNickname}
+            bestSlots={
+              result.kind === "recommend"
+                ? (result.response.candidates ?? []).map((c) => ({
+                    start: c.start,
+                    end: c.end,
+                  }))
+                : undefined
+            }
+            bufferMinutes={meeting.my_buffer_minutes ?? 60}
           />
         </section>
 

@@ -24,6 +24,38 @@ interface TimetableProps {
   submittedNicknames?: string[]
   // v4 — 본인 닉네임이 있으면 run.nicknames 에 포함된 셀에 흰 점 (MyDot) 표시.
   currentNickname?: string | null
+  // v4 — LLM 추천 결과 후보 (start/end ISO). 이 범위 안에 들어가는 run 은
+  // 'best' 로 외곽선(warn 색) 표시. 양 끝 bufferMinutes 만큼은 buffer hatching.
+  bestSlots?: Array<{ start: string; end: string }>
+  bufferMinutes?: number
+}
+
+// Parse a KST-ish ISO datetime ("YYYY-MM-DDTHH:mm[:ss][±HH:mm]") into a
+// timestamp in ms. The backend may emit either form (with or without offset);
+// Date's constructor handles both, but we strip the trailing offset when both
+// sides of a comparison should be in the same local frame.
+function isoToMs(iso: string): number {
+  const d = new Date(iso)
+  return d.getTime()
+}
+
+interface BestRange {
+  startMs: number
+  endMs: number
+}
+
+// `bestSlots` arrives as a list of LLM candidates; convert to ms ranges so
+// run/buffer comparisons are cheap inside the render loop.
+function toBestRanges(bestSlots: Array<{ start: string; end: string }> | undefined): BestRange[] {
+  if (!bestSlots) return []
+  const out: BestRange[] = []
+  for (const s of bestSlots) {
+    const startMs = isoToMs(s.start)
+    const endMs = isoToMs(s.end)
+    if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) continue
+    out.push({ startMs, endMs })
+  }
+  return out
 }
 
 // Day-of-week color matching soma-meeting.jsx Heatmap header strip.
@@ -138,6 +170,8 @@ export function Timetable({
   participantCount,
   submittedNicknames,
   currentNickname,
+  bestSlots,
+  bufferMinutes,
 }: TimetableProps) {
   const { dates, times, slotByKey } = useMemo(() => {
     const dateSet = new Set<string>()
@@ -159,6 +193,36 @@ export function Timetable({
     () => dates.map((date) => computeRuns(date, times, slotByKey)),
     [dates, times, slotByKey],
   )
+
+  // v4 — convert LLM bestSlots to ms ranges + cache buffer window length.
+  const bestRanges = useMemo(() => toBestRanges(bestSlots), [bestSlots])
+  const bufferMs = (bufferMinutes ?? 0) * 60_000
+
+  // For a given run, decide whether it sits fully inside a best range (best
+  // outline) or in the bufferMinutes window flanking one (buffer hatching).
+  function classifyRun(run: Run): { isBest: boolean; isBuffer: boolean } {
+    if (run.count <= 0 || !run.startSlot || !run.endSlot) {
+      return { isBest: false, isBuffer: false }
+    }
+    if (bestRanges.length === 0) return { isBest: false, isBuffer: false }
+    const runStart = isoToMs(run.startSlot.start)
+    const runEnd = isoToMs(run.endSlot.end)
+    for (const range of bestRanges) {
+      if (runStart >= range.startMs && runEnd <= range.endMs) {
+        return { isBest: true, isBuffer: false }
+      }
+      if (bufferMs > 0) {
+        const preStart = range.startMs - bufferMs
+        const postEnd = range.endMs + bufferMs
+        const inPre = runEnd > preStart && runEnd <= range.startMs
+        const inPost = runStart >= range.endMs && runStart < postEnd
+        if (inPre || inPost) {
+          return { isBest: false, isBuffer: true }
+        }
+      }
+    }
+    return { isBest: false, isBuffer: false }
+  }
 
   // #25 — 한 번에 하나의 Popover 만 열림. sticky=click 으로 열린 상태(셀 떠나도 유지).
   const [openCellId, setOpenCellId] = useState<string | null>(null)
@@ -289,6 +353,7 @@ export function Timetable({
               const isMine = Boolean(
                 currentNickname && run.nicknames.includes(currentNickname),
               )
+              const { isBest, isBuffer } = classifyRun(run)
               return (
                 <CellBlock
                   key={`${date}-${run.startIdx}`}
@@ -298,6 +363,8 @@ export function Timetable({
                   participantCount={participantCount}
                   submittedNicknames={submittedNicknames}
                   isMine={isMine}
+                  isBest={isBest}
+                  isBuffer={isBuffer}
                   isOpen={openCellId === id}
                   onHoverOpen={openByHover}
                   onHoverClose={closeByLeave}
@@ -351,6 +418,10 @@ interface CellBlockProps {
   submittedNicknames?: string[]
   // v4 — true when run.nicknames contains the viewer's nickname.
   isMine?: boolean
+  // v4 — run sits fully inside an LLM-recommended candidate range.
+  isBest?: boolean
+  // v4 — run sits in the bufferMinutes window flanking a best range.
+  isBuffer?: boolean
   isOpen: boolean
   onHoverOpen: (id: string) => void
   onHoverClose: (id: string) => void
@@ -365,6 +436,8 @@ function CellBlock({
   participantCount,
   submittedNicknames,
   isMine = false,
+  isBest = false,
+  isBuffer = false,
   isOpen,
   onHoverOpen,
   onHoverClose,
@@ -411,6 +484,7 @@ function CellBlock({
         style={{
           gridColumn: dateColIdx + 2,
           gridRow: `${run.startIdx + 2} / span ${run.length}`,
+          ...(isBuffer ? { backgroundImage: "var(--soma-buffer-bg)" } : {}),
         }}
         className={cn(
           "flex items-center justify-center rounded-sm border border-border bg-background text-[10px] leading-none tabular-nums",
@@ -427,16 +501,30 @@ function CellBlock({
       : []
   const totalSubmitted = submittedNicknames?.length
 
+  // Best = LLM-recommended slot → warn-colored inset outline.
+  // Buffer = bufferMinutes flank of a best slot → soma-buffer-bg overlay.
+  // Both are layered on top of the heat color (kept underneath).
+  const cellStyle: React.CSSProperties = {
+    gridColumn: dateColIdx + 2,
+    gridRow: `${run.startIdx + 2} / span ${run.length}`,
+    ...intensityStyle(run.count, participantCount),
+    ...(isBuffer ? { backgroundImage: "var(--soma-buffer-bg)" } : {}),
+    ...(isBest
+      ? {
+          outline: "2px solid var(--soma-warn)",
+          outlineOffset: -2,
+        }
+      : {}),
+  }
+
   return (
     <Popover open={isOpen} onOpenChange={(o) => onOpenChange(cellId, o)}>
       <div
         role="gridcell"
-        aria-label={`${startLabel} 가능 ${run.count}명`}
-        style={{
-          gridColumn: dateColIdx + 2,
-          gridRow: `${run.startIdx + 2} / span ${run.length}`,
-          ...intensityStyle(run.count, participantCount),
-        }}
+        aria-label={`${startLabel} 가능 ${run.count}명${isBest ? " (추천)" : ""}`}
+        data-best={isBest ? "true" : undefined}
+        data-buffer={isBuffer ? "true" : undefined}
+        style={cellStyle}
         className={cn(
           "relative flex cursor-pointer items-center justify-center rounded-sm text-[10px] leading-none tabular-nums",
           intensityTextClass(run.count, participantCount),
