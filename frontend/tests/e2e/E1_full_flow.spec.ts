@@ -249,9 +249,9 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
     await p.locator('[data-testid="join-pin"]').fill(opts.pin ?? "1111")
     await p.locator('[data-testid="join-submit"]').click()
 
-    // Step 7 — AvailabilitySection appears with tabs.
-    await expect(p.getByRole("tab", { name: "직접 입력" })).toBeVisible({ timeout: 10_000 })
-    await p.getByRole("tab", { name: "직접 입력" }).click()
+    // Step 7 — AvailabilitySection appears with segmented tabs (Soma AvailInput pattern).
+    await expect(p.locator('[data-testid="availability-tab-manual"]')).toBeVisible({ timeout: 10_000 })
+    await p.locator('[data-testid="availability-tab-manual"]').click()
 
     // Mode toggle defaults to timeline; switch to chip grid for deterministic flow.
     await p.locator('[data-testid="mode-toggle-grid"]').click()
