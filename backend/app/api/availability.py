@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+import re
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
@@ -203,6 +204,7 @@ def _normalize_nl_parse_output(
         if isinstance(summary_raw, str) and summary_raw.strip()
         else "자연어 입력을 불가능 시간으로 변환했습니다."
     )
+    summary = _strip_wrong_weekday_labels(summary)
 
     recognized_phrases = _normalize_recognized_phrases(raw.get("recognized_phrases"))
 
@@ -237,6 +239,38 @@ def _normalize_nl_parse_output(
             {"start": start_dt.isoformat(), "end": end_dt.isoformat()}
         )
     return normalized, summary, recognized_phrases
+
+
+_WEEKDAY_KO_FULL = ["월", "화", "수", "목", "금", "토", "일"]
+_SUMMARY_WEEKDAY_RE = re.compile(
+    r"(?P<label>월|화|수|목|금|토|일)요일\s*\(?\s*(?P<date>\d{4}-\d{2}-\d{2})\s*\)?"
+)
+
+
+def _strip_wrong_weekday_labels(summary: str) -> str:
+    """Drop weekday labels in the summary that disagree with the date
+    they're attached to.
+
+    The LLM occasionally hallucinates the weekday for an attached date
+    (e.g. '월요일(2026-05-16)' when 2026-05-16 is actually a Saturday).
+    The date itself is unambiguous, so we keep it and drop just the
+    label: '월요일(2026-05-16) 전체를…' → '2026-05-16 전체를…'. If the
+    label matches the date, leave the text alone.
+    """
+
+    def _check(match: "re.Match[str]") -> str:
+        label = match.group("label")
+        iso = match.group("date")
+        try:
+            d = date.fromisoformat(iso)
+        except ValueError:
+            return match.group(0)
+        expected = _WEEKDAY_KO_FULL[d.weekday()]
+        if label == expected:
+            return match.group(0)
+        return iso
+
+    return _SUMMARY_WEEKDAY_RE.sub(_check, summary)
 
 
 def _normalize_recognized_phrases(raw_phrases) -> list[str]:
