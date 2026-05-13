@@ -5,10 +5,11 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Sparkles } from "lucide-react"
+import { RefreshCw, Sparkles } from "lucide-react"
 import { useToast } from "@/components/ui/toast"
 import { api } from "@/lib/api"
 import { ApiError, type RecommendResponse } from "@/lib/types"
+import { cn } from "@/lib/cn"
 
 interface RecommendButtonProps {
   slug: string
@@ -16,6 +17,8 @@ interface RecommendButtonProps {
   loading: boolean
   setLoading: (v: boolean) => void
   onResult: (res: RecommendResponse) => void
+  /** Compact ghost variant for embedding inside RecommendCard's header band. */
+  compact?: boolean
 }
 
 const COOLDOWN_MS = 5 * 60 * 1000
@@ -55,6 +58,7 @@ export function RecommendButton({
   loading,
   setLoading,
   onResult,
+  compact = false,
 }: RecommendButtonProps) {
   const { toast } = useToast()
   const [now, setNow] = useState(() => Date.now())
@@ -107,6 +111,32 @@ export function RecommendButton({
     : onCooldown
       ? `재추천 ${formatRemaining(remaining)}`
       : "추천받기"
+
+  if (compact) {
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={handleClick}
+        disabled={disabled || loading || onCooldown}
+        data-testid="recommend-button"
+        title={
+          onCooldown
+            ? `5분 쿨타임 중 (${formatRemaining(remaining)} 남음)`
+            : "AI 재추천"
+        }
+        className="h-7 gap-1 px-2 text-[11.5px] font-semibold text-primary hover:bg-[var(--soma-primary-soft)] hover:text-primary"
+      >
+        <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
+        {loading
+          ? "추천 중"
+          : onCooldown
+            ? formatRemaining(remaining)
+            : "재추천"}
+      </Button>
+    )
+  }
 
   return (
     <Button

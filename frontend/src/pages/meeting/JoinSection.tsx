@@ -137,14 +137,9 @@ export function JoinSection({ slug, locationType, onJoined }: Props) {
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <div className="flex items-baseline justify-between gap-2">
-                <Label htmlFor="join-pin-input">
-                  PIN (숫자 4자리) <span className="text-destructive">*</span>
-                </Label>
-                <span className="text-[11px] text-muted-foreground">
-                  다음 진입 시 본인 확인에 사용됩니다
-                </span>
-              </div>
+              <Label htmlFor="join-pin-input">
+                PIN (숫자 4자리) <span className="text-destructive">*</span>
+              </Label>
               <Input
                 id="join-pin-input"
                 value={pin}
@@ -155,13 +150,7 @@ export function JoinSection({ slug, locationType, onJoined }: Props) {
                 autoComplete="off"
                 aria-invalid={pinError ? "true" : undefined}
                 data-testid="join-pin"
-                style={{
-                  fontFamily:
-                    "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace",
-                  letterSpacing: "0.35em",
-                }}
                 className={cn(
-                  "text-base md:text-base placeholder:text-muted-foreground/60",
                   pinError && "border-destructive focus-visible:border-destructive",
                 )}
               />
