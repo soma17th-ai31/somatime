@@ -534,7 +534,7 @@ function ConfirmedCard({
       <div className="flex flex-col gap-3 p-4">
         <div className="rounded-lg border border-success/30 bg-[var(--soma-success-soft)] px-3 py-2.5 text-sm font-semibold text-success">
           <Check className="mr-1 inline h-3.5 w-3.5" aria-hidden="true" />
-          회의가 확정되었습니다
+          회의가 확정되었습니다.
         </div>
         <div className="text-[22px] font-extrabold leading-tight tracking-tight text-foreground tabular-nums">
           {range}
