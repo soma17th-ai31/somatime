@@ -156,7 +156,8 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   const organizer = await organizerContext.newPage()
 
   await organizer.goto("/")
-  await expect(organizer.getByRole("heading", { name: "SomaMeet" })).toBeVisible()
+  // v4 redesign: page h1 is "회의 만들기"; "SomaMeet" lives in the TopBar wordmark.
+  await expect(organizer.getByRole("heading", { name: "회의 만들기" })).toBeVisible()
 
   await organizer.locator("#title").fill("팀 회의")
 
@@ -171,8 +172,9 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   await clickRdpDate(organizer, "date-range-picker", monday)
   await clickRdpDate(organizer, "date-range-picker", friday)
 
-  // duration: 60min — participant_count input was retired in v3.1.
-  await organizer.locator("#duration_minutes").selectOption("60")
+  // duration: 60min via segmented testid (v4 redesign — native select replaced
+  // by a segmented control for visual consistency with location/period-mode).
+  await organizer.locator('[data-testid="duration-60"]').click()
 
   // Step 3 — segmented location control. v3 follow-up: 회의 전체 buffer 가
   // 제거되어 location 변경만 exercise. 개인 buffer 는 회의 페이지에서 따로 처리.
