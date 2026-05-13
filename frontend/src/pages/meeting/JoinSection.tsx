@@ -12,38 +12,24 @@
 //   - PIN is now required (4-digit). The old "PIN optional" copy retired.
 
 import { useState } from "react"
-import {
-  AlertCircle,
-  ArrowRight,
-  Calendar as CalendarIcon,
-  Clock,
-  MapPin,
-} from "lucide-react"
+import { AlertCircle, ArrowRight, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/components/ui/toast"
 import { api } from "@/lib/api"
-import { ApiError, type LocationType, type MeetingDetail } from "@/lib/types"
+import { ApiError, type LocationType } from "@/lib/types"
 import { cn } from "@/lib/cn"
-import { formatMeetingTitle } from "@/lib/meetingTitle"
 
 const PIN_REGEX = /^\d{4}$/
 
-const LOCATION_LABEL: Record<LocationType, string> = {
-  online: "온라인",
-  offline: "오프라인",
-  any: "온라인/오프라인 모두 가능",
-}
-
 interface Props {
   slug: string
-  meeting: MeetingDetail
   locationType: LocationType
   onJoined: (nickname: string, token?: string) => void
 }
 
-export function JoinSection({ slug, meeting, locationType, onJoined }: Props) {
+export function JoinSection({ slug, locationType, onJoined }: Props) {
   const { toast } = useToast()
   const [nickname, setNickname] = useState("")
   const [pin, setPin] = useState("")
@@ -101,45 +87,26 @@ export function JoinSection({ slug, meeting, locationType, onJoined }: Props) {
   }
 
   return (
-    <section className="flex flex-col gap-6">
-      <header className="text-center sm:text-left">
-        <h1 className="text-[22px] font-extrabold leading-tight tracking-[-0.5px] text-foreground lg:text-[26px]">
-          회의에 참여하기
-        </h1>
-        <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
-          이름과 PIN을 입력하면 가용 시간을 입력할 수 있어요.
-        </p>
+    <section className="rounded-2xl border border-border bg-background p-5 sm:p-6">
+      <header className="mb-5 flex items-center gap-3">
+        <div
+          aria-hidden="true"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--soma-primary-soft)] text-primary"
+        >
+          <User className="h-4 w-4" />
+        </div>
+        <div className="min-w-0">
+          <div className="text-[14.5px] font-bold tracking-tight text-foreground">
+            회의에 참여하기
+          </div>
+          <div className="text-xs text-muted-foreground">
+            이름과 PIN을 입력하면 가용 시간을 입력할 수 있어요
+          </div>
+        </div>
       </header>
 
-      <div className="mx-auto w-full max-w-[480px]">
+      <div>
         <div className="flex flex-col gap-5">
-          {/* Meeting context card */}
-          <div
-            data-testid="join-meeting-context"
-            className="rounded-2xl border border-border bg-card p-4 sm:p-5"
-          >
-            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-              참여 요청
-            </div>
-            <h2 className="mt-2 text-[18px] font-extrabold leading-tight tracking-[-0.4px] text-foreground lg:text-[20px]">
-              {formatMeetingTitle(meeting.title)}
-            </h2>
-            <div className="mt-2.5 flex flex-wrap gap-3 text-[12.5px] font-medium text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5">
-                <CalendarIcon className="h-3.5 w-3.5" aria-hidden="true" />
-                {formatDateScope(meeting)}
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Clock className="h-3.5 w-3.5" aria-hidden="true" />
-                {meeting.duration_minutes}분
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
-                {LOCATION_LABEL[locationType]}
-              </span>
-            </div>
-          </div>
-
           {/* Form */}
           <form
             onSubmit={handleJoin}
@@ -228,12 +195,6 @@ export function JoinSection({ slug, meeting, locationType, onJoined }: Props) {
               {!submitting ? <ArrowRight className="h-4 w-4" /> : null}
             </Button>
           </form>
-
-          <p className="text-center text-[11.5px] leading-relaxed text-[color:var(--soma-faint)]">
-            SomaMeet은 캘린더 정보를 저장하지 않습니다.
-            <br />
-            입력한 가용 시간은 90일 후 자동 삭제됩니다.
-          </p>
         </div>
       </div>
     </section>
@@ -307,19 +268,3 @@ function ToggleRow({ checked, onChange, title, description, testId }: ToggleRowP
   )
 }
 
-function formatDateScope(meeting: MeetingDetail): string {
-  if (meeting.date_mode === "range") {
-    if (!meeting.date_range_start || !meeting.date_range_end) return "-"
-    return `${formatDateShort(meeting.date_range_start)} – ${formatDateShort(meeting.date_range_end)}`
-  }
-  const dates = meeting.candidate_dates ?? []
-  if (dates.length === 0) return "-"
-  if (dates.length <= 2) return dates.map(formatDateShort).join(", ")
-  return `${formatDateShort(dates[0])} 외 ${dates.length - 1}일`
-}
-
-function formatDateShort(iso: string): string {
-  const [, m, d] = iso.split("-")
-  if (!m || !d) return iso
-  return `${Number.parseInt(m, 10)}월 ${Number.parseInt(d, 10)}일`
-}

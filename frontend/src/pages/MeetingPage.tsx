@@ -280,7 +280,6 @@ export default function MeetingPage() {
             ) : (
               <JoinSection
                 slug={slug}
-                meeting={meeting}
                 locationType={meeting.location_type}
                 onJoined={onJoined}
               />
