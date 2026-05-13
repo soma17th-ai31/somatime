@@ -16,7 +16,9 @@ from typing import Sequence, TYPE_CHECKING
 from app.db.models import Meeting
 from app.services.llm.base import LLMAdapter
 from app.services.llm.prompts import (
+    SYSTEM_PROMPT_PARSE_AVAILABILITY,
     SYSTEM_PROMPT_RECOMMEND,
+    build_availability_parse_user_prompt,
     build_recommendation_user_prompt,
 )
 
@@ -63,6 +65,21 @@ class UpstageAdapter(LLMAdapter):
             temperature=0.2,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT_RECOMMEND},
+                {"role": "user", "content": user_prompt},
+            ],
+        )
+        content = response.choices[0].message.content or "{}"
+        return json.loads(content)
+
+    def parse_availability(self, text: str, meeting: Meeting) -> dict:
+        payload = self.build_availability_parse_payload(text, meeting)
+        user_prompt = build_availability_parse_user_prompt(payload)
+
+        response = self._client.chat.completions.create(
+            model=self._model,
+            temperature=0.1,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT_PARSE_AVAILABILITY},
                 {"role": "user", "content": user_prompt},
             ],
         )
