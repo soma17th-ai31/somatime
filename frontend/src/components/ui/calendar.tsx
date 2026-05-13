@@ -39,8 +39,18 @@ function Calendar({
           buttonVariants({ variant: "ghost" }),
           "size-9 p-0 font-normal aria-selected:opacity-100",
         ),
+        // Soma mockup matching — range start/end keep rounded outer corners,
+        // middle cells fill primarySoft and stay square so they read as one
+        // continuous band. Single-day picks (`selected` without range modifiers)
+        // get the full pill treatment.
         selected:
-          "rounded-md bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
+          "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
+        range_start:
+          "rounded-l-md bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
+        range_end:
+          "rounded-r-md bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
+        range_middle:
+          "rounded-none bg-[var(--soma-primary-soft)] text-primary hover:bg-[var(--soma-primary-soft)] hover:text-primary",
         today: "rounded-md border border-border text-foreground",
         outside: "text-muted-foreground opacity-45",
         disabled: "text-muted-foreground opacity-35",

@@ -1,11 +1,14 @@
 // Tabbed date selector — Spec §5.1 "date_mode": "range" | "picked".
 //   - Tab "범위": react-day-picker mode="range" → emits {start, end} as YYYY-MM-DD ISO strings.
 //   - Tab "개별 선택": mode="multiple" → emits string[] of YYYY-MM-DD ISO strings.
+// v4 — Soma mockup matching: card wrapper + selection summary footer.
 
 import { useMemo } from "react"
-import { DayPicker, type DateRange } from "react-day-picker"
+import { type DateRange } from "react-day-picker"
 import { ko } from "date-fns/locale"
 import "react-day-picker/dist/style.css"
+import { Calendar as CalendarIcon } from "lucide-react"
+import { Calendar } from "@/components/ui/calendar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import type { DateMode } from "@/lib/types"
 
@@ -32,6 +35,30 @@ function dateFromIso(iso: string | null): Date | undefined {
   const [y, m, d] = iso.split("-").map((s) => Number.parseInt(s, 10))
   if (!y || !m || !d) return undefined
   return new Date(y, m - 1, d)
+}
+
+function formatKoDate(iso: string): string {
+  const [, m, d] = iso.split("-")
+  return `${Number.parseInt(m, 10)}월 ${Number.parseInt(d, 10)}일`
+}
+
+function daysBetween(startIso: string, endIso: string): number {
+  const start = new Date(`${startIso}T00:00:00`)
+  const end = new Date(`${endIso}T00:00:00`)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0
+  return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1)
+}
+
+function rangeSummary(start: string | null, end: string | null): string {
+  if (!start) return "시작일을 선택해 주세요"
+  if (!end) return `${formatKoDate(start)} 부터 ~ 종료일을 선택해 주세요`
+  return `${formatKoDate(start)} – ${formatKoDate(end)} (${daysBetween(start, end)}일간)`
+}
+
+function pickedSummary(dates: string[]): string {
+  if (dates.length === 0) return "날짜를 직접 선택해 주세요"
+  const formatted = dates.map(formatKoDate).join(", ")
+  return `${dates.length}일 선택됨 · ${formatted}`
 }
 
 export function DateRangeOrPicker({
@@ -63,8 +90,11 @@ export function DateRangeOrPicker({
       </TabsList>
 
       <TabsContent value="range">
-        <div data-testid="date-range-picker">
-          <DayPicker
+        <div
+          data-testid="date-range-picker"
+          className="rounded-xl border border-border bg-background p-3.5"
+        >
+          <Calendar
             mode="range"
             locale={ko}
             selected={selectedRange}
@@ -76,15 +106,16 @@ export function DateRangeOrPicker({
             numberOfMonths={1}
             showOutsideDays
           />
-          <p className="mt-2 text-xs text-muted-foreground">
-            연속된 날짜 범위를 선택합니다. 시작일과 종료일을 차례로 클릭하세요.
-          </p>
+          <SelectionSummary text={rangeSummary(rangeStart, rangeEnd)} />
         </div>
       </TabsContent>
 
       <TabsContent value="picked">
-        <div data-testid="date-picked-picker">
-          <DayPicker
+        <div
+          data-testid="date-picked-picker"
+          className="rounded-xl border border-border bg-background p-3.5"
+        >
+          <Calendar
             mode="multiple"
             locale={ko}
             selected={selectedPicked}
@@ -97,11 +128,18 @@ export function DateRangeOrPicker({
             numberOfMonths={1}
             showOutsideDays
           />
-          <p className="mt-2 text-xs text-muted-foreground">
-            비연속 날짜를 여러 개 선택할 수 있습니다.
-          </p>
+          <SelectionSummary text={pickedSummary(pickedDates)} />
         </div>
       </TabsContent>
     </Tabs>
+  )
+}
+
+function SelectionSummary({ text }: { text: string }) {
+  return (
+    <div className="mt-3 flex items-center gap-1.5 border-t border-dashed border-border pt-3 text-xs font-medium text-muted-foreground">
+      <CalendarIcon className="h-3.5 w-3.5" aria-hidden="true" />
+      <span>{text}</span>
+    </div>
   )
 }
