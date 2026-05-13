@@ -164,9 +164,6 @@ export function ManualAvailabilityForm({
       onSubmit={handleSubmit}
     >
       <div className="flex flex-col gap-2">
-        <p className="text-sm text-muted-foreground">
-          가능한 시간을 선택하세요. 선택하지 않은 시간은 모두 불가능으로 처리됩니다.
-        </p>
         <div
           role="group"
           aria-label="입력 방식"

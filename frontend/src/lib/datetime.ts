@@ -52,11 +52,17 @@ export function formatKstWeekday(iso: string): string {
 }
 
 export function formatKstRange(startIso: string, endIso: string): string {
-  const startDate = formatKstDate(startIso)
+  // Short M/D (요일) HH:MM – HH:MM form, matching the share-message draft
+  // and the in-card 추천 시간 display so the visual stays consistent across
+  // pre-confirm and post-confirm surfaces.
+  const dateKey = kstDateKey(startIso) // "YYYY-MM-DD"
+  const [, mm, dd] = dateKey.split("-")
+  const month = Number.parseInt(mm ?? "0", 10)
+  const day = Number.parseInt(dd ?? "0", 10)
   const startTime = formatKstTime(startIso)
   const endTime = formatKstTime(endIso)
   const weekday = formatKstWeekday(startIso)
-  return `${startDate} (${weekday}) ${startTime} - ${endTime} KST`
+  return `${month}/${day} (${weekday}) ${startTime} – ${endTime}`
 }
 
 // Build a KST-anchored ISO string from a YYYY-MM-DD date and HH:MM time entered by the user.
