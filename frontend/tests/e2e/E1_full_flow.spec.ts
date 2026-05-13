@@ -103,13 +103,22 @@ async function clickRdpDate(
   const targetMonthLabel = `${targetYear}년 ${KO_MONTHS[target.getMonth()]}`
 
   // Advance calendar up to 18 months (well over any plausible window).
+  // v4 — Calendar wrapper overrides react-day-picker's default `rdp-*` classes
+  // so we read the caption via the live region (role="status") that v9 keeps
+  // for screen readers, plus the grid's aria-label as a fallback.
   for (let i = 0; i < 18; i++) {
-    const caption = await picker
-      .locator(".rdp-caption_label, .rdp-month_caption")
+    const captionFromStatus = await picker
+      .getByRole("status")
       .first()
       .innerText()
       .catch(() => "")
-    if (caption.replace(/\s+/g, " ").includes(targetMonthLabel)) break
+    const captionFromGrid = await picker
+      .getByRole("grid")
+      .first()
+      .getAttribute("aria-label")
+      .catch(() => null)
+    const captionText = `${captionFromStatus} ${captionFromGrid ?? ""}`
+    if (captionText.replace(/\s+/g, " ").includes(targetMonthLabel)) break
 
     const next = picker.getByRole("button", { name: /다음|Next/i }).first()
     await next.click()
