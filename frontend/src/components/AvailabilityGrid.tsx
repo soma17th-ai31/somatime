@@ -314,7 +314,7 @@ function TimeRow({
             className={cn(
               "relative h-6 cursor-pointer touch-none rounded-sm transition-colors",
               selected
-                ? "bg-primary shadow-[inset_0_0_0_1px_rgba(255,255,255,0.18)] hover:bg-primary/85"
+                ? "bg-primary hover:bg-primary/85"
                 : "border border-border bg-background hover:bg-primary/15",
             )}
           >
