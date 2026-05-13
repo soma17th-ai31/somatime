@@ -204,8 +204,9 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   const slug = slugMatch![1]
   // The share URL is the URL bar itself.
   const shareUrl = currentUrl
-  // v4 Phase F follow-up: until joined, the page renders only JoinSection.
-  // Verify the join form is presented (no MeetingSummary yet).
+  // Pre-join state: both MeetingSummary (read-only meeting facts) and
+  // JoinSection are rendered together (matches pic_02 mockup).
+  await expect(organizer.locator('[data-testid="meeting-summary"]')).toBeVisible()
   await expect(organizer.locator('[data-testid="join-form"]')).toBeVisible()
 
   // Organizer registers themselves as a participant so the full meeting UI
@@ -218,11 +219,13 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   // -------- step 5: shared URL in incognito context -> page loads (Path B) --------
   // v3.2 Path B: pick / 확정 buttons are intentionally available everywhere —
   // anyone with the share URL can confirm. The accident safeguard is the
-  // 2-step ShareMessageDialog itself. In v4 Phase F, an unjoined visitor only
-  // sees JoinSection (full UI gated), so we assert that here.
+  // 2-step ShareMessageDialog itself. An unjoined visitor sees both the
+  // meeting summary and the join form (no cookie yet -> CurrentParticipantCard
+  // slot renders JoinSection in its place).
   const peekContext = await browser.newContext()
   const peek = await peekContext.newPage()
   await peek.goto(shareUrl)
+  await expect(peek.locator('[data-testid="meeting-summary"]')).toBeVisible()
   await expect(peek.locator('[data-testid="join-form"]')).toBeVisible()
   await peekContext.close()
 
