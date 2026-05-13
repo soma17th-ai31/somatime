@@ -13,15 +13,21 @@ import {
 } from "@/lib/availabilityCells"
 import { cn } from "@/lib/cn"
 
+export type PendingApplyMode = "overwrite" | "merge"
+
 interface Props {
   slug: string
   meeting: MeetingDetail
   onSubmitted: () => void
-  // v3.24 — ICS upload pre-fill pipeline. AvailabilitySection passes parsed
-  // busy_blocks here when the user uploads an ICS file; the form converts
-  // them to selected cells and clears the pending state via onPendingIcsApplied.
-  pendingIcsBlocks?: { start: string; end: string }[] | null
-  onPendingIcsApplied?: () => void
+  // Pre-fill pipeline shared by ICS upload and natural-language input.
+  // AvailabilitySection passes parsed busy_blocks here; the form converts
+  // them to selected cells based on applyMode, then clears the pending
+  // state via onPendingApplied.
+  //   - "overwrite": replaces current selection (legacy ICS behaviour)
+  //   - "merge": union with current selected (= busy intersection)
+  pendingBlocks?: { start: string; end: string }[] | null
+  pendingApplyMode?: PendingApplyMode
+  onPendingApplied?: () => void
 }
 
 type InputMode = "timeline" | "grid"
@@ -50,8 +56,9 @@ export function ManualAvailabilityForm({
   slug,
   meeting,
   onSubmitted,
-  pendingIcsBlocks,
-  onPendingIcsApplied,
+  pendingBlocks,
+  pendingApplyMode = "overwrite",
+  onPendingApplied,
 }: Props) {
   const { toast } = useToast()
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -89,15 +96,29 @@ export function ManualAvailabilityForm({
     lastAppliedKeyRef.current = myBlocksKey
   }, [myBlocksKey, meeting])
 
-  // v3.24 — when ICS upload hands us parsed busy_blocks, immediately convert
-  // them to a selected Set (= available = allCells - busyCells) so the user
-  // can review on the grid. Then clear the pending so a single tab-switch
-  // doesn't re-apply repeatedly.
+  // When ICS upload / natural-language input hands us parsed busy_blocks,
+  // convert them to a selected Set (= available = allCells - busyCells) and
+  // apply per applyMode:
+  //   - "overwrite": replaces current selection.
+  //   - "merge": keeps the intersection of available cells (= union of busy),
+  //              so a slot stays available only when BOTH inputs allow it.
+  // Then clear the pending so a single tab-switch doesn't re-apply repeatedly.
   useEffect(() => {
-    if (!pendingIcsBlocks) return
-    setSelected(selectedFromBusyBlocks(meeting, pendingIcsBlocks))
-    onPendingIcsApplied?.()
-  }, [pendingIcsBlocks, meeting, onPendingIcsApplied])
+    if (!pendingBlocks) return
+    const incoming = selectedFromBusyBlocks(meeting, pendingBlocks)
+    if (pendingApplyMode === "merge") {
+      setSelected((prev) => {
+        const next = new Set<string>()
+        for (const k of incoming) {
+          if (prev.has(k)) next.add(k)
+        }
+        return next
+      })
+    } else {
+      setSelected(incoming)
+    }
+    onPendingApplied?.()
+  }, [pendingBlocks, pendingApplyMode, meeting, onPendingApplied])
 
   function selectAll() {
     setSelected(new Set(allCells))
