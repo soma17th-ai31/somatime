@@ -241,6 +241,7 @@ export default function MeetingPage() {
               meeting={meeting}
               refreshKey={refreshKey}
               onConfirmed={onConfirmed}
+              currentNickname={participantNickname}
             />
           </div>
 

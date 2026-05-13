@@ -22,24 +22,72 @@ interface TimetableProps {
   // #25 — 미응답자 계산용. 회의에 닉네임으로 제출한 모든 참여자 목록.
   // (그 시간 미응답자 = submittedNicknames - run.nicknames)
   submittedNicknames?: string[]
+  // v4 — 본인 닉네임이 있으면 run.nicknames 에 포함된 셀에 흰 점 (MyDot) 표시.
+  currentNickname?: string | null
+  // v4 — LLM 추천 결과 후보 (start/end ISO). 이 범위 안에 들어가는 run 은
+  // 'best' 로 외곽선(warn 색) 표시. 양 끝 bufferMinutes 만큼은 buffer hatching.
+  bestSlots?: Array<{ start: string; end: string }>
+  bufferMinutes?: number
 }
 
-// Tailwind v3 + hex CSS-var primary doesn't compose `bg-primary/<alpha>` reliably,
-// so we drive the heatmap opacity via inline rgba (primary = #5e6ad2 = rgb(94,106,210)).
+// Parse a KST-ish ISO datetime ("YYYY-MM-DDTHH:mm[:ss][±HH:mm]") into a
+// timestamp in ms. The backend may emit either form (with or without offset);
+// Date's constructor handles both, but we strip the trailing offset when both
+// sides of a comparison should be in the same local frame.
+function isoToMs(iso: string): number {
+  const d = new Date(iso)
+  return d.getTime()
+}
+
+interface BestRange {
+  startMs: number
+  endMs: number
+}
+
+// `bestSlots` arrives as a list of LLM candidates; convert to ms ranges so
+// run/buffer comparisons are cheap inside the render loop.
+function toBestRanges(bestSlots: Array<{ start: string; end: string }> | undefined): BestRange[] {
+  if (!bestSlots) return []
+  const out: BestRange[] = []
+  for (const s of bestSlots) {
+    const startMs = isoToMs(s.start)
+    const endMs = isoToMs(s.end)
+    if (Number.isNaN(startMs) || Number.isNaN(endMs) || endMs <= startMs) continue
+    out.push({ startMs, endMs })
+  }
+  return out
+}
+
+// Day-of-week color matching soma-meeting.jsx Heatmap header strip.
+// Saturday → primary (소마 인디고), Sunday → destructive (red), 평일 → ink-soft.
+function dayOfWeekClass(dateIso: string): string {
+  // Treat dateIso as a plain calendar date — anchor at UTC midnight so the
+  // resulting weekday is stable regardless of the runner's local TZ.
+  const dow = new Date(`${dateIso}T00:00:00Z`).getUTCDay()
+  if (dow === 0) return "text-destructive"
+  if (dow === 6) return "text-primary"
+  return "text-[color:var(--soma-ink-soft)]"
+}
+
+// v4 — Soma 5-step heat ramp via `--soma-heat-0..5` CSS variables.
+//   heat-0 = nobody available (count <= 0)
+//   heat-1..5 = bucketed share of total submitted participants
+// The lower buckets stay light enough that black text remains legible without
+// needing to flip to white; we only switch text color from heat-3 upwards.
 function intensityStyle(count: number, total: number): React.CSSProperties {
-  if (count <= 0) return {}
+  if (count <= 0) return { backgroundColor: "var(--soma-heat-0)" }
   const ratio = total > 0 ? Math.min(count / total, 1) : 1
-  let alpha: number
-  if (ratio >= 1) alpha = 1
-  else if (ratio >= 0.67) alpha = 0.85
-  else if (ratio >= 0.34) alpha = 0.7
-  else alpha = 0.55
-  return { backgroundColor: `rgba(94, 106, 210, ${alpha})` }
+  const idx = Math.min(5, Math.max(1, Math.round(ratio * 5)))
+  return { backgroundColor: `var(--soma-heat-${idx})` }
 }
 
-function intensityTextClass(count: number): string {
+function intensityTextClass(count: number, total: number): string {
   if (count <= 0) return "text-muted-foreground/60"
-  return "text-primary-foreground"
+  // heat-1/2 are pale enough that white text would be unreadable; switch to
+  // light text only once the cell is dark (heat-3+).
+  const ratio = total > 0 ? Math.min(count / total, 1) : 1
+  const idx = Math.min(5, Math.max(1, Math.round(ratio * 5)))
+  return idx >= 3 ? "text-primary-foreground" : "text-primary"
 }
 
 function makeKey(date: string, time: string): string {
@@ -121,6 +169,9 @@ export function Timetable({
   slots,
   participantCount,
   submittedNicknames,
+  currentNickname,
+  bestSlots,
+  bufferMinutes,
 }: TimetableProps) {
   const { dates, times, slotByKey } = useMemo(() => {
     const dateSet = new Set<string>()
@@ -142,6 +193,36 @@ export function Timetable({
     () => dates.map((date) => computeRuns(date, times, slotByKey)),
     [dates, times, slotByKey],
   )
+
+  // v4 — convert LLM bestSlots to ms ranges + cache buffer window length.
+  const bestRanges = useMemo(() => toBestRanges(bestSlots), [bestSlots])
+  const bufferMs = (bufferMinutes ?? 0) * 60_000
+
+  // For a given run, decide whether it sits fully inside a best range (best
+  // outline) or in the bufferMinutes window flanking one (buffer hatching).
+  function classifyRun(run: Run): { isBest: boolean; isBuffer: boolean } {
+    if (run.count <= 0 || !run.startSlot || !run.endSlot) {
+      return { isBest: false, isBuffer: false }
+    }
+    if (bestRanges.length === 0) return { isBest: false, isBuffer: false }
+    const runStart = isoToMs(run.startSlot.start)
+    const runEnd = isoToMs(run.endSlot.end)
+    for (const range of bestRanges) {
+      if (runStart >= range.startMs && runEnd <= range.endMs) {
+        return { isBest: true, isBuffer: false }
+      }
+      if (bufferMs > 0) {
+        const preStart = range.startMs - bufferMs
+        const postEnd = range.endMs + bufferMs
+        const inPre = runEnd > preStart && runEnd <= range.startMs
+        const inPost = runStart >= range.endMs && runStart < postEnd
+        if (inPre || inPost) {
+          return { isBest: false, isBuffer: true }
+        }
+      }
+    }
+    return { isBest: false, isBuffer: false }
+  }
 
   // #25 — 한 번에 하나의 Popover 만 열림. sticky=click 으로 열린 상태(셀 떠나도 유지).
   const [openCellId, setOpenCellId] = useState<string | null>(null)
@@ -200,10 +281,25 @@ export function Timetable({
     gridTemplateRows: `auto repeat(${times.length}, 24px)`,
   }
 
+  const responseCount = submittedNicknames?.length ?? participantCount
+
   return (
     <div className="space-y-3">
+      <div className="overflow-hidden rounded-xl border border-border bg-background">
+        {/* Header strip — title + count + heat ramp legend (Soma mockup spec). */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4 py-3">
+          <div className="flex items-baseline gap-2.5">
+            <div className="text-[14px] font-bold tracking-tight text-foreground">
+              전체 가용 시간
+            </div>
+            <div className="text-xs font-medium text-muted-foreground">
+              {`응답 ${responseCount}명`}
+            </div>
+          </div>
+          <HeatLegend max={participantCount} />
+        </div>
       <div
-        className="max-h-[520px] touch-pan-y overflow-auto overscroll-contain rounded-xl border border-border bg-card p-2"
+        className="max-h-[520px] touch-pan-y overflow-auto overscroll-contain bg-card p-2"
         data-testid="timetable-horizontal"
         onScroll={handleScroll}
       >
@@ -219,13 +315,14 @@ export function Timetable({
             className="sticky left-0 top-0 z-40 bg-card"
           />
 
-          {/* Date headers (sticky top) */}
+          {/* Date headers (sticky top) — weekend colors per Soma spec. */}
           {dates.map((date, dIdx) => (
             <div
               key={`th-${date}`}
               style={{ gridColumn: dIdx + 2, gridRow: 1 }}
               className={cn(
-                "sticky top-0 z-30 rounded-md border border-border bg-card px-1 py-2 text-center text-[11px] font-semibold text-foreground transition-colors transition-shadow hover:border-primary/30",
+                "sticky top-0 z-30 rounded-md border border-border bg-card px-1 py-2 text-center text-[11px] font-semibold transition-colors transition-shadow hover:border-primary/30",
+                dayOfWeekClass(date),
                 isScrolled && "shadow-[0_2px_8px_rgba(0,0,0,0.16)]",
               )}
             >
@@ -253,6 +350,10 @@ export function Timetable({
           {dates.map((date, dIdx) =>
             datesRuns[dIdx].map((run) => {
               const id = `${dIdx}-${run.startIdx}`
+              const isMine = Boolean(
+                currentNickname && run.nicknames.includes(currentNickname),
+              )
+              const { isBest, isBuffer } = classifyRun(run)
               return (
                 <CellBlock
                   key={`${date}-${run.startIdx}`}
@@ -261,6 +362,9 @@ export function Timetable({
                   dateColIdx={dIdx}
                   participantCount={participantCount}
                   submittedNicknames={submittedNicknames}
+                  isMine={isMine}
+                  isBest={isBest}
+                  isBuffer={isBuffer}
                   isOpen={openCellId === id}
                   onHoverOpen={openByHover}
                   onHoverClose={closeByLeave}
@@ -272,10 +376,36 @@ export function Timetable({
           )}
         </div>
       </div>
+      </div>
       <p className="text-xs text-muted-foreground">
         셀의 색이 진할수록 더 많은 참여자가 가능한 시간입니다. 셀 위에 마우스를 올리거나 셀을 누르면
         가능 인원이 표시됩니다.
       </p>
+    </div>
+  )
+}
+
+interface HeatLegendProps {
+  max: number
+}
+
+// 5-step ramp swatch — used in the header strip to teach the encoding.
+function HeatLegend({ max }: HeatLegendProps) {
+  return (
+    <div className="flex items-center gap-2" aria-hidden="true">
+      <span className="text-[11px] font-medium text-muted-foreground">0</span>
+      <div className="flex gap-0.5">
+        {[1, 2, 3, 4, 5].map((idx) => (
+          <span
+            key={idx}
+            className="h-2.5 w-2.5 rounded-sm"
+            style={{ backgroundColor: `var(--soma-heat-${idx})` }}
+          />
+        ))}
+      </div>
+      <span className="text-[11px] font-medium text-muted-foreground">
+        {max}
+      </span>
     </div>
   )
 }
@@ -286,6 +416,12 @@ interface CellBlockProps {
   dateColIdx: number
   participantCount: number
   submittedNicknames?: string[]
+  // v4 — true when run.nicknames contains the viewer's nickname.
+  isMine?: boolean
+  // v4 — run sits fully inside an LLM-recommended candidate range.
+  isBest?: boolean
+  // v4 — run sits in the bufferMinutes window flanking a best range.
+  isBuffer?: boolean
   isOpen: boolean
   onHoverOpen: (id: string) => void
   onHoverClose: (id: string) => void
@@ -299,6 +435,9 @@ function CellBlock({
   dateColIdx,
   participantCount,
   submittedNicknames,
+  isMine = false,
+  isBest = false,
+  isBuffer = false,
   isOpen,
   onHoverOpen,
   onHoverClose,
@@ -345,10 +484,11 @@ function CellBlock({
         style={{
           gridColumn: dateColIdx + 2,
           gridRow: `${run.startIdx + 2} / span ${run.length}`,
+          ...(isBuffer ? { backgroundImage: "var(--soma-buffer-bg)" } : {}),
         }}
         className={cn(
           "flex items-center justify-center rounded-sm border border-border bg-background text-[10px] leading-none tabular-nums",
-          intensityTextClass(0),
+          intensityTextClass(0, participantCount),
         )}
       />
     )
@@ -361,19 +501,33 @@ function CellBlock({
       : []
   const totalSubmitted = submittedNicknames?.length
 
+  // Best = LLM-recommended slot → warn-colored inset outline.
+  // Buffer = bufferMinutes flank of a best slot → soma-buffer-bg overlay.
+  // Both are layered on top of the heat color (kept underneath).
+  const cellStyle: React.CSSProperties = {
+    gridColumn: dateColIdx + 2,
+    gridRow: `${run.startIdx + 2} / span ${run.length}`,
+    ...intensityStyle(run.count, participantCount),
+    ...(isBuffer ? { backgroundImage: "var(--soma-buffer-bg)" } : {}),
+    ...(isBest
+      ? {
+          outline: "2px solid var(--soma-warn)",
+          outlineOffset: -2,
+        }
+      : {}),
+  }
+
   return (
     <Popover open={isOpen} onOpenChange={(o) => onOpenChange(cellId, o)}>
       <div
         role="gridcell"
-        aria-label={`${startLabel} 가능 ${run.count}명`}
-        style={{
-          gridColumn: dateColIdx + 2,
-          gridRow: `${run.startIdx + 2} / span ${run.length}`,
-          ...intensityStyle(run.count, participantCount),
-        }}
+        aria-label={`${startLabel} 가능 ${run.count}명${isBest ? " (추천)" : ""}`}
+        data-best={isBest ? "true" : undefined}
+        data-buffer={isBuffer ? "true" : undefined}
+        style={cellStyle}
         className={cn(
           "relative flex cursor-pointer items-center justify-center rounded-sm text-[10px] leading-none tabular-nums",
-          intensityTextClass(run.count),
+          intensityTextClass(run.count, participantCount),
         )}
         onMouseEnter={(e) => {
           recordAnchor(e)
@@ -398,6 +552,13 @@ function CellBlock({
           />
         </PopoverAnchor>
         {run.count}
+        {isMine ? (
+          <span
+            aria-hidden="true"
+            data-testid="cell-mine-dot"
+            className="pointer-events-none absolute right-0.5 top-0.5 h-1 w-1 rounded-full bg-white shadow-[0_0_0_1px_rgba(15,23,42,0.3)]"
+          />
+        ) : null}
       </div>
       <PopoverContent
         side="right"
