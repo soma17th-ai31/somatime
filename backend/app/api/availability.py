@@ -144,35 +144,72 @@ def parse_natural_language_availability(
             },
         ) from exc
 
-    try:
-        raw = adapter.parse_availability(payload.text, meeting)
-    except (ValueError, json.JSONDecodeError) as exc:
-        logger.exception("NL parse: LLM returned unparseable output: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail={
-                "error_code": "llm_parse_failed",
-                "message": "자연어 응답을 해석하지 못했습니다.",
-                "suggestion": "조금 더 명확한 표현으로 다시 시도해주세요.",
-            },
-        ) from exc
-    except Exception as exc:
-        logger.exception("NL parse: LLM network/SDK error: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={
-                "error_code": "llm_unavailable",
-                "message": "자연어 파싱 엔진 호출에 실패했습니다.",
-                "suggestion": "잠시 후 다시 시도해주세요.",
-            },
-        ) from exc
+    # Agentic validator + retry: extract weekdays the user actually mentioned,
+    # then verify the LLM didn't place busy_blocks on weekdays outside that
+    # whitelist. If it did, feed the violations back to the LLM and retry up
+    # to NL_PARSE_MAX_RETRIES times. Final fallback: deterministic drop of
+    # offending busy_blocks (defense in depth, regardless of retry outcome).
+    user_weekdays = _extract_user_weekdays(payload.text)
+    feedback: str | None = None
+    busy_blocks: list[dict] = []
+    summary: str = ""
+    recognized_phrases: list[str] = []
 
-    busy_blocks, summary, recognized_phrases = _normalize_nl_parse_output(raw, meeting)
+    for attempt in range(NL_PARSE_MAX_RETRIES + 1):
+        text_for_llm = payload.text if feedback is None else f"{payload.text}\n\n{feedback}"
+        try:
+            raw = adapter.parse_availability(text_for_llm, meeting)
+        except (ValueError, json.JSONDecodeError) as exc:
+            logger.exception("NL parse: LLM returned unparseable output: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={
+                    "error_code": "llm_parse_failed",
+                    "message": "자연어 응답을 해석하지 못했습니다.",
+                    "suggestion": "조금 더 명확한 표현으로 다시 시도해주세요.",
+                },
+            ) from exc
+        except Exception as exc:
+            logger.exception("NL parse: LLM network/SDK error: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error_code": "llm_unavailable",
+                    "message": "자연어 파싱 엔진 호출에 실패했습니다.",
+                    "suggestion": "잠시 후 다시 시도해주세요.",
+                },
+            ) from exc
+
+        busy_blocks, summary, recognized_phrases = _normalize_nl_parse_output(raw, meeting)
+
+        violations = _find_weekday_violations(busy_blocks, user_weekdays)
+        if not violations:
+            break
+        if attempt == NL_PARSE_MAX_RETRIES:
+            logger.info(
+                "NL parse: retry budget exhausted, dropping %d off-weekday blocks",
+                len(violations),
+            )
+            busy_blocks = [b for b in busy_blocks if b not in violations]
+            break
+        feedback = _format_weekday_feedback(violations, user_weekdays)
+        logger.info(
+            "NL parse: attempt %d hit %d weekday violations, retrying with feedback",
+            attempt + 1,
+            len(violations),
+        )
+
     return {
         "busy_blocks": busy_blocks,
         "summary": summary,
         "recognized_phrases": recognized_phrases,
     }
+
+
+# Agentic retry budget: 1 first try + N retries with feedback. Conservative
+# default keeps the average latency / cost close to one round-trip — most
+# inputs pass on the first attempt thanks to the strengthened prompt.
+NL_PARSE_MAX_RETRIES = 2
 
 
 # Phase D — chip phrases are short Korean strings (e.g. "월 9-12시 불가").
@@ -245,6 +282,104 @@ _WEEKDAY_KO_FULL = ["월", "화", "수", "목", "금", "토", "일"]
 _SUMMARY_WEEKDAY_RE = re.compile(
     r"(?P<label>월|화|수|목|금|토|일)요일\s*\(?\s*(?P<date>\d{4}-\d{2}-\d{2})\s*\)?"
 )
+
+# Patterns for extracting user-mentioned weekdays from free text. We
+# require either '월요일' / '화요일' / ... (unambiguous) or grouped
+# tokens like '평일' / '주말' / '매일'. A bare '월' is *not* matched
+# because it commonly appears inside "5월", "월말", etc.
+_USER_WEEKDAY_FULL_FORMS = {
+    0: "월요일",
+    1: "화요일",
+    2: "수요일",
+    3: "목요일",
+    4: "금요일",
+    5: "토요일",
+    6: "일요일",
+}
+_USER_WEEKDAY_ALL_MARKERS = ("매일", "모든 요일", "전부", "항상", "온종일", "내내")
+_USER_WEEKDAY_WEEKDAY_MARKERS = ("평일", "주중")  # 월~금
+_USER_WEEKDAY_WEEKEND_MARKERS = ("주말",)  # 토, 일
+
+
+def _extract_user_weekdays(text: str) -> set[int] | None:
+    """Return the set of weekday integers (0=월 ... 6=일) the user
+    explicitly mentioned, or ``None`` if the text implies all weekdays
+    (either through "매일"-class markers or by not naming any weekday
+    at all).
+
+    Used by the validator to gate which weekdays the LLM is allowed to
+    place busy_blocks on. Conservative: only obvious '월요일' /
+    '평일' / '주말' / '매일' tokens are recognized — short forms like
+    bare '월' are skipped so dates like '5월' don't false-positive.
+    """
+    if not text:
+        return None
+    if any(marker in text for marker in _USER_WEEKDAY_ALL_MARKERS):
+        return None
+
+    weekdays: set[int] = set()
+    for marker in _USER_WEEKDAY_WEEKDAY_MARKERS:
+        if marker in text:
+            weekdays.update({0, 1, 2, 3, 4})
+    for marker in _USER_WEEKDAY_WEEKEND_MARKERS:
+        if marker in text:
+            weekdays.update({5, 6})
+    for wd, form in _USER_WEEKDAY_FULL_FORMS.items():
+        if form in text:
+            weekdays.add(wd)
+
+    return weekdays or None
+
+
+def _find_weekday_violations(
+    busy_blocks: list[dict],
+    user_weekdays: set[int] | None,
+) -> list[dict]:
+    """Return the subset of ``busy_blocks`` whose start date falls on
+    a weekday the user never mentioned. Empty list when the user
+    implies all weekdays (``user_weekdays is None``).
+    """
+    if user_weekdays is None:
+        return []
+    violations: list[dict] = []
+    for block in busy_blocks:
+        try:
+            start_dt = datetime.fromisoformat(block["start"])
+        except (KeyError, ValueError):
+            continue
+        if start_dt.weekday() not in user_weekdays:
+            violations.append(block)
+    return violations
+
+
+def _format_weekday_feedback(
+    violations: list[dict],
+    user_weekdays: set[int] | None,
+) -> str:
+    """Build a short Korean feedback note for the LLM retry. Lists the
+    busy_blocks that landed on weekdays the user never mentioned and
+    states what the allowed weekdays are.
+    """
+    allowed = (
+        ", ".join(_WEEKDAY_KO_FULL[w] for w in sorted(user_weekdays))
+        if user_weekdays
+        else "(없음)"
+    )
+    examples: list[str] = []
+    for block in violations[:3]:
+        try:
+            start_dt = datetime.fromisoformat(block["start"])
+        except (KeyError, ValueError):
+            continue
+        examples.append(
+            f"{start_dt.date().isoformat()} ({_WEEKDAY_KO_FULL[start_dt.weekday()]})"
+        )
+    examples_str = ", ".join(examples) if examples else "(샘플 없음)"
+    return (
+        "[자동 검증 피드백] 이전 응답에서 busy_blocks 가 사용자가 명시하지 않은 요일에 들어갔습니다. "
+        f"사용자가 언급한 요일: {allowed}. 문제 블록 예: {examples_str}. "
+        "다시 응답을 생성하되 사용자가 언급한 요일에만 busy_blocks 를 두세요."
+    )
 
 
 def _strip_wrong_weekday_labels(summary: str) -> str:
