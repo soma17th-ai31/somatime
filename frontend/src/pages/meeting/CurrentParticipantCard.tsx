@@ -195,49 +195,79 @@ export function CurrentParticipantCard({
     return (
       <div
         data-testid="current-participant-card"
-        className="flex flex-wrap items-center gap-2 text-sm"
+        className="rounded-2xl border border-border bg-background p-4"
       >
-        <span
-          className={
-            isRequired
-              ? "inline-flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/15 px-3 py-1 font-medium text-primary"
-              : "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 font-medium text-foreground"
-          }
-          title={isRequired ? "필수 참여자로 표시됨" : undefined}
-        >
-          <span aria-hidden="true">{isRequired ? "★" : "👤"}</span>
-          <span>{nickname}</span>
-          {showBuffer ? (
-            <span
-              className="text-xs font-normal text-muted-foreground"
-              data-testid="buffer-readout"
+        <div className="flex items-center gap-3">
+          <div
+            aria-hidden="true"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--soma-primary-soft)] text-sm font-bold text-primary"
+          >
+            {nickname.slice(0, 1)}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[14.5px] font-bold tracking-tight text-foreground">
+                {nickname}
+              </span>
+              <span className="inline-flex h-[20px] items-center rounded-md border border-success/30 bg-[var(--soma-success-soft)] px-1.5 text-[11px] font-semibold text-success">
+                응답 완료
+              </span>
+              {isRequired ? (
+                <span
+                  title="필수 참여자로 표시됨"
+                  className="inline-flex h-[20px] items-center gap-1 rounded-md border border-primary/30 bg-[var(--soma-primary-soft)] px-1.5 text-[11px] font-semibold text-primary"
+                >
+                  <Star className="h-2.5 w-2.5" aria-hidden="true" />
+                  필수 참여자
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-0.5 text-xs text-muted-foreground">본인 참여 정보</div>
+          </div>
+          <div className="flex shrink-0 gap-1.5">
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={startEdit}
+              aria-label="닉네임/PIN 수정"
+              data-testid="rename-toggle"
             >
-              · 버퍼 {effectiveBuffer}분
-            </span>
-          ) : null}
-        </span>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={startEdit}
-          aria-label="닉네임/PIN 수정"
-          data-testid="rename-toggle"
-        >
-          <Pencil className="h-3.5 w-3.5" />
-          이름/PIN 수정
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={onSwitchUser}
-          aria-label="로그아웃"
-          data-testid="switch-user"
-        >
-          <LogOut className="h-3.5 w-3.5" />
-          로그아웃
-        </Button>
+              <Pencil className="h-3.5 w-3.5" />
+              재설정
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onSwitchUser}
+              aria-label="로그아웃"
+              data-testid="switch-user"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              로그아웃
+            </Button>
+          </div>
+        </div>
+        {showBuffer ? (
+          <>
+            <div className="my-3 h-px bg-border" aria-hidden="true" />
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-[13px] font-semibold text-muted-foreground">
+                회의 전후 버퍼
+              </div>
+              <div
+                className="text-[13px] font-bold text-primary"
+                data-testid="buffer-readout"
+              >
+                {effectiveBuffer === 0 ? "없음" : `${effectiveBuffer}분`}
+              </div>
+            </div>
+            <div className="mt-1 text-[11.5px] text-muted-foreground">
+              이동·정리 시간을 추천 알고리즘에 반영합니다. 재설정에서 변경할 수 있어요.
+            </div>
+          </>
+        ) : null}
       </div>
     )
   }
