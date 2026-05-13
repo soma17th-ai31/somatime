@@ -112,10 +112,24 @@ export function NaturalLanguageAvailabilityForm({ slug, meeting, onApply }: Prop
     setError(null)
     try {
       const res = await api.parseNaturalLanguage(slug, text)
+      const phrases = res.recognized_phrases ?? []
+      // LLM returned a 200 but couldn't extract anything actionable: no
+      // busy_blocks and no recognized phrases means the model couldn't find
+      // a time expression in the user's input. Surface this as an error
+      // state instead of dropping the user into an empty preview grid.
+      if (res.busy_blocks.length === 0 && phrases.length === 0) {
+        setError({
+          message: "문장에서 시간을 찾지 못했어요",
+          errorCode: "no_time_recognized",
+          suggestion:
+            "요일이나 시간을 포함해서 다시 적어주세요. 예: \"월요일 오전은 불가, 화요일 오후 2시부터 가능\"",
+        })
+        return
+      }
       setPreview({
         busyBlocks: res.busy_blocks,
         summary: res.summary,
-        recognizedPhrases: res.recognized_phrases ?? [],
+        recognizedPhrases: phrases,
       })
     } catch (err) {
       if (err instanceof ApiError) {
