@@ -116,7 +116,7 @@ export function RecommendButton({
     return (
       <Button
         type="button"
-        variant="ghost"
+        variant="outline"
         size="sm"
         onClick={handleClick}
         disabled={disabled || loading || onCooldown}
@@ -126,7 +126,7 @@ export function RecommendButton({
             ? `5분 쿨타임 중 (${formatRemaining(remaining)} 남음)`
             : "AI 재추천"
         }
-        className="h-7 gap-1 px-2 text-[11.5px] font-semibold text-primary hover:bg-[var(--soma-primary-soft)] hover:text-primary"
+        className="h-7 gap-1 border-border bg-background px-2 text-[11.5px] font-semibold text-foreground hover:bg-card"
       >
         <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} />
         {loading

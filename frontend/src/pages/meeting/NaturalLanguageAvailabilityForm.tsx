@@ -241,11 +241,11 @@ function NLShell({ title, hint, action, children }: NLShellProps) {
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-background">
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="text-[14px] font-bold tracking-tight text-foreground">{title}</div>
           <div className="mt-0.5 text-xs text-muted-foreground">{hint}</div>
         </div>
-        {action}
+        <div className="shrink-0">{action}</div>
       </div>
       <div className="p-4">{children}</div>
     </div>
@@ -257,20 +257,20 @@ function NLShell({ title, hint, action, children }: NLShellProps) {
 function StateBadge({ stage }: { stage: Stage }) {
   if (stage === "preview") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-success/30 bg-[var(--soma-success-soft)] px-2 py-0.5 text-[11px] font-semibold tracking-tight text-success">
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-success/30 bg-[var(--soma-success-soft)] px-2 py-0.5 text-[11px] font-semibold tracking-tight text-success">
         <Check className="h-3 w-3" /> 해석 완료
       </span>
     )
   }
   if (stage === "error") {
     return (
-      <span className="inline-flex items-center gap-1 rounded-md border border-destructive/30 bg-[var(--soma-destructive-soft)] px-2 py-0.5 text-[11px] font-semibold tracking-tight text-destructive">
+      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-destructive/30 bg-[var(--soma-destructive-soft)] px-2 py-0.5 text-[11px] font-semibold tracking-tight text-destructive">
         <AlertTriangle className="h-3 w-3" /> 해석 실패
       </span>
     )
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-[var(--soma-primary-soft)] px-2 py-0.5 text-[11px] font-semibold tracking-tight text-primary">
+    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-primary/30 bg-[var(--soma-primary-soft)] px-2 py-0.5 text-[11px] font-semibold tracking-tight text-primary">
       <Sparkles className="h-3 w-3" /> AI
     </span>
   )
