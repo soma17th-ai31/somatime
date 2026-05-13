@@ -37,6 +37,8 @@ interface Props {
   meeting: MeetingDetail
   refreshKey: number
   onConfirmed: (response: ConfirmResponse, candidate: Candidate) => void
+  // v4 — viewer's nickname for the Timetable "mine" indicator.
+  currentNickname?: string | null
 }
 
 type ResultState =
@@ -53,6 +55,7 @@ export function TimetableSection({
   meeting,
   refreshKey,
   onConfirmed,
+  currentNickname,
 }: Props) {
   const { toast } = useToast()
 
@@ -235,6 +238,7 @@ export function TimetableSection({
             slots={timetable?.slots ?? []}
             participantCount={Math.max(submitted, 1)}
             submittedNicknames={meeting.submitted_nicknames ?? []}
+            currentNickname={currentNickname}
           />
         </section>
 

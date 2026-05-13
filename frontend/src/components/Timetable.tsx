@@ -22,6 +22,8 @@ interface TimetableProps {
   // #25 — 미응답자 계산용. 회의에 닉네임으로 제출한 모든 참여자 목록.
   // (그 시간 미응답자 = submittedNicknames - run.nicknames)
   submittedNicknames?: string[]
+  // v4 — 본인 닉네임이 있으면 run.nicknames 에 포함된 셀에 흰 점 (MyDot) 표시.
+  currentNickname?: string | null
 }
 
 // Day-of-week color matching soma-meeting.jsx Heatmap header strip.
@@ -135,6 +137,7 @@ export function Timetable({
   slots,
   participantCount,
   submittedNicknames,
+  currentNickname,
 }: TimetableProps) {
   const { dates, times, slotByKey } = useMemo(() => {
     const dateSet = new Set<string>()
@@ -283,6 +286,9 @@ export function Timetable({
           {dates.map((date, dIdx) =>
             datesRuns[dIdx].map((run) => {
               const id = `${dIdx}-${run.startIdx}`
+              const isMine = Boolean(
+                currentNickname && run.nicknames.includes(currentNickname),
+              )
               return (
                 <CellBlock
                   key={`${date}-${run.startIdx}`}
@@ -291,6 +297,7 @@ export function Timetable({
                   dateColIdx={dIdx}
                   participantCount={participantCount}
                   submittedNicknames={submittedNicknames}
+                  isMine={isMine}
                   isOpen={openCellId === id}
                   onHoverOpen={openByHover}
                   onHoverClose={closeByLeave}
@@ -342,6 +349,8 @@ interface CellBlockProps {
   dateColIdx: number
   participantCount: number
   submittedNicknames?: string[]
+  // v4 — true when run.nicknames contains the viewer's nickname.
+  isMine?: boolean
   isOpen: boolean
   onHoverOpen: (id: string) => void
   onHoverClose: (id: string) => void
@@ -355,6 +364,7 @@ function CellBlock({
   dateColIdx,
   participantCount,
   submittedNicknames,
+  isMine = false,
   isOpen,
   onHoverOpen,
   onHoverClose,
@@ -454,6 +464,13 @@ function CellBlock({
           />
         </PopoverAnchor>
         {run.count}
+        {isMine ? (
+          <span
+            aria-hidden="true"
+            data-testid="cell-mine-dot"
+            className="pointer-events-none absolute right-0.5 top-0.5 h-1 w-1 rounded-full bg-white shadow-[0_0_0_1px_rgba(15,23,42,0.3)]"
+          />
+        ) : null}
       </div>
       <PopoverContent
         side="right"
