@@ -24,22 +24,25 @@ interface TimetableProps {
   submittedNicknames?: string[]
 }
 
-// Tailwind v3 + hex CSS-var primary doesn't compose `bg-primary/<alpha>` reliably,
-// so we drive the heatmap opacity via inline rgba (primary = #5e6ad2 = rgb(94,106,210)).
+// v4 — Soma 5-step heat ramp via `--soma-heat-0..5` CSS variables.
+//   heat-0 = nobody available (count <= 0)
+//   heat-1..5 = bucketed share of total submitted participants
+// The lower buckets stay light enough that black text remains legible without
+// needing to flip to white; we only switch text color from heat-3 upwards.
 function intensityStyle(count: number, total: number): React.CSSProperties {
-  if (count <= 0) return {}
+  if (count <= 0) return { backgroundColor: "var(--soma-heat-0)" }
   const ratio = total > 0 ? Math.min(count / total, 1) : 1
-  let alpha: number
-  if (ratio >= 1) alpha = 1
-  else if (ratio >= 0.67) alpha = 0.85
-  else if (ratio >= 0.34) alpha = 0.7
-  else alpha = 0.55
-  return { backgroundColor: `rgba(94, 106, 210, ${alpha})` }
+  const idx = Math.min(5, Math.max(1, Math.round(ratio * 5)))
+  return { backgroundColor: `var(--soma-heat-${idx})` }
 }
 
-function intensityTextClass(count: number): string {
+function intensityTextClass(count: number, total: number): string {
   if (count <= 0) return "text-muted-foreground/60"
-  return "text-primary-foreground"
+  // heat-1/2 are pale enough that white text would be unreadable; switch to
+  // light text only once the cell is dark (heat-3+).
+  const ratio = total > 0 ? Math.min(count / total, 1) : 1
+  const idx = Math.min(5, Math.max(1, Math.round(ratio * 5)))
+  return idx >= 3 ? "text-primary-foreground" : "text-primary"
 }
 
 function makeKey(date: string, time: string): string {
@@ -348,7 +351,7 @@ function CellBlock({
         }}
         className={cn(
           "flex items-center justify-center rounded-sm border border-border bg-background text-[10px] leading-none tabular-nums",
-          intensityTextClass(0),
+          intensityTextClass(0, participantCount),
         )}
       />
     )
@@ -373,7 +376,7 @@ function CellBlock({
         }}
         className={cn(
           "relative flex cursor-pointer items-center justify-center rounded-sm text-[10px] leading-none tabular-nums",
-          intensityTextClass(run.count),
+          intensityTextClass(run.count, participantCount),
         )}
         onMouseEnter={(e) => {
           recordAnchor(e)
