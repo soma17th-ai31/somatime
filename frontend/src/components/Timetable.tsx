@@ -24,6 +24,17 @@ interface TimetableProps {
   submittedNicknames?: string[]
 }
 
+// Day-of-week color matching soma-meeting.jsx Heatmap header strip.
+// Saturday → primary (소마 인디고), Sunday → destructive (red), 평일 → ink-soft.
+function dayOfWeekClass(dateIso: string): string {
+  // Treat dateIso as a plain calendar date — anchor at UTC midnight so the
+  // resulting weekday is stable regardless of the runner's local TZ.
+  const dow = new Date(`${dateIso}T00:00:00Z`).getUTCDay()
+  if (dow === 0) return "text-destructive"
+  if (dow === 6) return "text-primary"
+  return "text-[color:var(--soma-ink-soft)]"
+}
+
 // v4 — Soma 5-step heat ramp via `--soma-heat-0..5` CSS variables.
 //   heat-0 = nobody available (count <= 0)
 //   heat-1..5 = bucketed share of total submitted participants
@@ -203,10 +214,25 @@ export function Timetable({
     gridTemplateRows: `auto repeat(${times.length}, 24px)`,
   }
 
+  const responseCount = submittedNicknames?.length ?? participantCount
+
   return (
     <div className="space-y-3">
+      <div className="overflow-hidden rounded-xl border border-border bg-background">
+        {/* Header strip — title + count + heat ramp legend (Soma mockup spec). */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background px-4 py-3">
+          <div className="flex items-baseline gap-2.5">
+            <div className="text-[14px] font-bold tracking-tight text-foreground">
+              전체 가용 시간
+            </div>
+            <div className="text-xs font-medium text-muted-foreground">
+              {`응답 ${responseCount}명`}
+            </div>
+          </div>
+          <HeatLegend max={participantCount} />
+        </div>
       <div
-        className="max-h-[520px] touch-pan-y overflow-auto overscroll-contain rounded-xl border border-border bg-card p-2"
+        className="max-h-[520px] touch-pan-y overflow-auto overscroll-contain bg-card p-2"
         data-testid="timetable-horizontal"
         onScroll={handleScroll}
       >
@@ -222,13 +248,14 @@ export function Timetable({
             className="sticky left-0 top-0 z-40 bg-card"
           />
 
-          {/* Date headers (sticky top) */}
+          {/* Date headers (sticky top) — weekend colors per Soma spec. */}
           {dates.map((date, dIdx) => (
             <div
               key={`th-${date}`}
               style={{ gridColumn: dIdx + 2, gridRow: 1 }}
               className={cn(
-                "sticky top-0 z-30 rounded-md border border-border bg-card px-1 py-2 text-center text-[11px] font-semibold text-foreground transition-colors transition-shadow hover:border-primary/30",
+                "sticky top-0 z-30 rounded-md border border-border bg-card px-1 py-2 text-center text-[11px] font-semibold transition-colors transition-shadow hover:border-primary/30",
+                dayOfWeekClass(date),
                 isScrolled && "shadow-[0_2px_8px_rgba(0,0,0,0.16)]",
               )}
             >
@@ -275,10 +302,36 @@ export function Timetable({
           )}
         </div>
       </div>
+      </div>
       <p className="text-xs text-muted-foreground">
         셀의 색이 진할수록 더 많은 참여자가 가능한 시간입니다. 셀 위에 마우스를 올리거나 셀을 누르면
         가능 인원이 표시됩니다.
       </p>
+    </div>
+  )
+}
+
+interface HeatLegendProps {
+  max: number
+}
+
+// 5-step ramp swatch — used in the header strip to teach the encoding.
+function HeatLegend({ max }: HeatLegendProps) {
+  return (
+    <div className="flex items-center gap-2" aria-hidden="true">
+      <span className="text-[11px] font-medium text-muted-foreground">0</span>
+      <div className="flex gap-0.5">
+        {[1, 2, 3, 4, 5].map((idx) => (
+          <span
+            key={idx}
+            className="h-2.5 w-2.5 rounded-sm"
+            style={{ backgroundColor: `var(--soma-heat-${idx})` }}
+          />
+        ))}
+      </div>
+      <span className="text-[11px] font-medium text-muted-foreground">
+        {max}
+      </span>
     </div>
   )
 }
