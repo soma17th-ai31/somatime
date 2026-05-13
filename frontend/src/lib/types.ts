@@ -80,6 +80,7 @@ export interface BusyBlock {
 export interface ParticipantResponse {
   participant_id: number
   nickname: string
+  token?: string
 }
 
 // Backwards-compat alias.

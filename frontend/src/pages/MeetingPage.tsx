@@ -22,6 +22,11 @@ import { ShareMessageDialog } from "@/components/ShareMessageDialog"
 import { useToast } from "@/components/ui/toast"
 import { formatKstRange } from "@/lib/datetime"
 import { cn } from "@/lib/cn"
+import {
+  clearParticipantSession,
+  readParticipantNickname,
+  writeParticipantSession,
+} from "@/lib/participantSession"
 
 // Layout breakpoint: when the meeting has many dates, the timetable + grid get
 // too wide for a 2-col split — fall back to a single-column stack.
@@ -35,24 +40,6 @@ function countMeetingDates(meeting: MeetingDetail): number {
     return Math.max(1, Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1)
   }
   return meeting.candidate_dates?.length ?? 0
-}
-
-const PARTICIPANT_LS_KEY = (slug: string) => `somameet_pt_local_${slug}`
-
-function readParticipantNickname(slug: string): string | null {
-  try {
-    return window.localStorage.getItem(PARTICIPANT_LS_KEY(slug))
-  } catch {
-    return null
-  }
-}
-
-function writeParticipantNickname(slug: string, nickname: string) {
-  try {
-    window.localStorage.setItem(PARTICIPANT_LS_KEY(slug), nickname)
-  } catch {
-    /* ignore */
-  }
 }
 
 export default function MeetingPage() {
@@ -96,8 +83,8 @@ export default function MeetingPage() {
   }, [reloadMeeting])
 
   const onJoined = useCallback(
-    (nickname: string) => {
-      if (slug) writeParticipantNickname(slug, nickname)
+    (nickname: string, token?: string) => {
+      if (slug) writeParticipantSession(slug, nickname, token)
       setParticipantNickname(nickname)
       void reloadMeeting()
     },
@@ -213,11 +200,7 @@ export default function MeetingPage() {
 
   function handleSwitchUser() {
     if (slug) {
-      try {
-        window.localStorage.removeItem(PARTICIPANT_LS_KEY(slug))
-      } catch {
-        /* ignore */
-      }
+      clearParticipantSession(slug)
     }
     setParticipantNickname(null)
     void reloadMeeting()
@@ -247,7 +230,7 @@ export default function MeetingPage() {
             myBufferMinutes={meeting.my_buffer_minutes ?? null}
             locationType={meeting.location_type}
             onRenamed={(newName) => {
-              writeParticipantNickname(slug, newName)
+              writeParticipantSession(slug, newName)
               setParticipantNickname(newName)
               void reloadMeeting()
             }}

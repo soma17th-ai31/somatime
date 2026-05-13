@@ -24,7 +24,7 @@ interface Props {
   slug: string
   // #13 — online 회의면 buffer Select 미렌더 (payload 는 0 하드코딩).
   locationType: LocationType
-  onJoined: (nickname: string) => void
+  onJoined: (nickname: string, token?: string) => void
 }
 
 const PIN_REGEX = /^\d{4}$/
@@ -90,7 +90,7 @@ export function JoinSection({ slug, locationType, onJoined }: Props) {
           : `${res.nickname}님으로 진입했습니다.`,
         "success",
       )
-      onJoined(res.nickname)
+      onJoined(res.nickname, res.token)
     } catch (err) {
       const msg = err instanceof ApiError ? err.message : "등록에 실패했습니다."
       setError(msg)

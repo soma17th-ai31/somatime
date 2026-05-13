@@ -2,7 +2,7 @@
 
 - get_db: SQLAlchemy session.
 - get_current_meeting: load Meeting by slug (404 -> meeting_not_found).
-- get_participant: read somameet_pt_{slug} cookie (403 -> participant_required).
+- get_participant: read somameet_pt_{slug} cookie or token header (403 -> participant_required).
 - count_submitted: helper for the calculate/recommend gate (Q2).
 - set_participant_cookie: writes the cookie per spec §6.2.
 
@@ -23,6 +23,7 @@ from app.db.session import get_db as _get_db
 
 
 COOKIE_MAX_AGE_SECONDS = 7 * 24 * 60 * 60  # 7 days, per spec §6.2
+PARTICIPANT_TOKEN_HEADER = "x-somameet-participant-token"
 
 
 def get_db():
@@ -32,6 +33,16 @@ def get_db():
 
 def cookie_name_for(slug: str) -> str:
     return f"somameet_pt_{slug}"
+
+
+def _participant_token_from_request(request: Request, slug: str) -> str | None:
+    token = request.cookies.get(cookie_name_for(slug)) or request.headers.get(
+        PARTICIPANT_TOKEN_HEADER
+    )
+    if not token:
+        return None
+    token = token.strip()
+    return token or None
 
 
 def set_participant_cookie(response: Response, slug: str, token: str) -> None:
@@ -82,9 +93,9 @@ def get_participant(
     slug: str = Path(..., min_length=1, max_length=64),
     db: Session = Depends(get_db),
 ) -> Participant:
-    """Resolve the calling participant via the slug-scoped cookie."""
-    cookie_value = request.cookies.get(cookie_name_for(slug))
-    if not cookie_value:
+    """Resolve the calling participant via cookie, with a header fallback for blocked third-party cookies."""
+    token = _participant_token_from_request(request, slug)
+    if not token:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -106,7 +117,7 @@ def get_participant(
     participant = (
         db.query(Participant)
         .filter(
-            Participant.token == cookie_value,
+            Participant.token == token,
             Participant.meeting_id == meeting.id,
         )
         .first()
@@ -128,12 +139,12 @@ def get_optional_participant(
     slug: str,
     db: Session,
 ) -> Optional[Participant]:
-    """Like get_participant but returns None on missing/invalid cookie instead of 403.
+    """Like get_participant but returns None on missing/invalid token instead of 403.
     Use in endpoints (e.g. GET /meetings/{slug}) that should respond to anonymous
-    callers but enrich the response when a participant cookie is present.
+    callers but enrich the response when a participant token is present.
     """
-    cookie_value = request.cookies.get(cookie_name_for(slug))
-    if not cookie_value:
+    token = _participant_token_from_request(request, slug)
+    if not token:
         return None
     meeting = db.query(Meeting).filter(Meeting.slug == slug).first()
     if meeting is None:
@@ -141,7 +152,7 @@ def get_optional_participant(
     return (
         db.query(Participant)
         .filter(
-            Participant.token == cookie_value,
+            Participant.token == token,
             Participant.meeting_id == meeting.id,
         )
         .first()
