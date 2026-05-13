@@ -13,6 +13,7 @@ import {
   type MeetingCreateResponse,
   type MeetingDetail,
   type MeetingSettingsUpdate,
+  type NaturalLanguageParseResponse,
   type ParticipantJoinRequest,
   type ParticipantLoginRequest,
   type ParticipantResponse,
@@ -183,6 +184,13 @@ export const api = {
     return request<{ busy_blocks: { start: string; end: string }[] }>(
       `/api/meetings/${encodeURIComponent(slug)}/availability/ics/parse`,
       { method: "POST", body: fd, isFormData: true },
+    )
+  },
+
+  parseNaturalLanguage(slug: string, text: string) {
+    return request<NaturalLanguageParseResponse>(
+      `/api/meetings/${encodeURIComponent(slug)}/availability/natural-language/parse`,
+      { method: "POST", body: { text } },
     )
   },
 
