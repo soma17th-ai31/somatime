@@ -130,13 +130,21 @@ export function RecommendCard({
     >
       <HeaderBand
         title="추천 시간"
-        subtitle={
-          hasResult
-            ? `응답 ${meeting.submitted_count ?? 0}명 기준 · AI 분석`
-            : `응답 ${meeting.submitted_count ?? 0}명 기준 · AI 분석`
-        }
+        subtitle={`응답 ${meeting.submitted_count ?? 0}명 기준 · AI 분석`}
         badge={hasResult && candidates.length > 0 ? `${candidates.length}개 제안` : null}
         confirmed={false}
+        action={
+          result?.kind === "recommend" ? (
+            <RecommendButton
+              slug={slug}
+              disabled={!ready || calculating}
+              loading={recommending}
+              setLoading={setRecommending}
+              onResult={onRecommendResult}
+              compact
+            />
+          ) : null
+        }
       />
 
       <div className="flex flex-col gap-3 p-4">
@@ -188,9 +196,12 @@ interface HeaderBandProps {
   subtitle?: string
   badge?: string | null
   confirmed: boolean
+  /** Optional inline action (e.g. compact 재추천 button) rendered to the
+   *  left of the badge on the right side of the header band. */
+  action?: React.ReactNode
 }
 
-function HeaderBand({ title, subtitle, badge, confirmed }: HeaderBandProps) {
+function HeaderBand({ title, subtitle, badge, confirmed, action }: HeaderBandProps) {
   return (
     <div className="flex items-center justify-between gap-3 border-b border-border bg-gradient-to-b from-[var(--soma-primary-soft)] to-background px-4 py-3">
       <div className="flex items-center gap-2.5">
@@ -212,11 +223,14 @@ function HeaderBand({ title, subtitle, badge, confirmed }: HeaderBandProps) {
           ) : null}
         </div>
       </div>
-      {badge ? (
-        <span className="rounded-md border border-primary/30 bg-[var(--soma-primary-soft)] px-2 py-0.5 text-[11px] font-semibold tracking-tight text-primary">
-          {badge}
-        </span>
-      ) : null}
+      <div className="flex items-center gap-2">
+        {action}
+        {badge ? (
+          <span className="rounded-md border border-primary/30 bg-[var(--soma-primary-soft)] px-2 py-0.5 text-[11px] font-semibold tracking-tight text-primary">
+            {badge}
+          </span>
+        ) : null}
+      </div>
     </div>
   )
 }
