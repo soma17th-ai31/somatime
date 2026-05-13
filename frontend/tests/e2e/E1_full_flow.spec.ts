@@ -403,7 +403,9 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   await timetable.screenshot({ path: "test-results/timetable-merged.png" })
 
   // Bookkeeping: slug visible on header for debug clarity.
-  await expect(organizer.getByText(`slug: ${slug}`)).toBeVisible()
+  await expect(
+    organizer.getByTestId("meeting-summary").getByText(`slug: ${slug}`),
+  ).toBeVisible()
 
   await organizerContext.close()
 })

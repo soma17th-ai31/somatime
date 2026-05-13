@@ -292,8 +292,9 @@ export function Timetable({
             <div className="text-[14px] font-bold tracking-tight text-foreground">
               타임테이블
             </div>
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              입력된 답변을 합쳐서 참여자들의 공통 시간을 보여주어요
+            <div className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+              셀의 색이 진할수록 더 많은 참여자가 가능한 시간입니다. 셀 위에 마우스를
+              올리거나 셀을 누르면 가능 인원이 표시됩니다.
             </div>
           </div>
           <div className="flex items-center gap-3">

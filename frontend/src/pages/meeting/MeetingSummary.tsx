@@ -91,9 +91,14 @@ export function MeetingSummary({
       </div>
 
       <div className="flex items-start gap-3">
-        <h1 className="flex-1 min-w-0 text-2xl font-extrabold leading-tight tracking-[-0.6px] text-foreground lg:text-[28px]">
-          {formatMeetingTitle(meeting.title)}
-        </h1>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-extrabold leading-tight tracking-[-0.6px] text-foreground lg:text-[28px]">
+            {formatMeetingTitle(meeting.title)}
+          </h1>
+          <div className="mt-1 font-mono text-xs text-muted-foreground">
+            slug: {slug}
+          </div>
+        </div>
         {!isLocked ? (
           <button
             type="button"
