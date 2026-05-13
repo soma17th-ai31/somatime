@@ -29,7 +29,7 @@ export function InviteShareRow({ url }: Props) {
   return (
     <div
       data-testid="invite-share-row"
-      className="flex w-full max-w-xl items-center gap-2.5 rounded-xl border border-border bg-card px-3 py-2.5"
+      className="flex w-full items-center gap-2.5 rounded-xl border border-border bg-background px-3 py-2.5"
     >
       <div className="relative shrink-0">
         <button
