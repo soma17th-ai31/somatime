@@ -119,6 +119,10 @@ export interface IcsErrorResponse {
 export interface NaturalLanguageParseResponse {
   busy_blocks: { start: string; end: string }[]
   summary: string
+  // Phase D — optional list of recognized phrases (e.g. "월 9-12시 불가") to
+  // surface as chips in the NL preview. BE may omit this; FE hides the chip
+  // row when missing or empty.
+  recognized_phrases?: string[]
 }
 
 export interface Candidate {
