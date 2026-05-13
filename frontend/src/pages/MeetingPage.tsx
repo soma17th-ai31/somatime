@@ -1,20 +1,27 @@
 // MeetingPage — Spec §6 vertical order.
 //
-// v4 (2026-05-13) Soma redesign — Phase C1 (chrome):
-//   - TopBar with SomaMeet wordmark (matches CreateMeetingPage)
-//   - MeetingSummary spans full width at the top
-//   - Desktop (lg+): 2-column grid `1fr 360px`, right column = sticky sidebar
-//     hosting the new Participants card (and a slot for future RecommendCard)
-//   - Mobile: stacked main content followed by Participants
+// v4 (2026-05-13) Soma redesign:
+//   - Phase C1: TopBar, MeetingSummary, CurrentParticipantCard, Participants
+//   - Phase C2: Timetable heat ramp / mine / best / buffer hatching
+//   - Phase C3: sticky sidebar = RecommendCard + Participants. Result state
+//     (calculate / recommend) lives here so the card can sit in the sidebar
+//     while Timetable receives bestSlots in the main column.
 //
-// AvailabilitySection / TimetableSection / ResultSection are unchanged — this
-// PR only touches the chrome around them. Data flow (useEffect polling,
-// participantSession cookie, ShareMessageDialog confirm round-trip) is
-// preserved verbatim.
+// Data flow (preserved):
+//   - useEffect 5-sec polling while !confirmed
+//   - participantSession cookie / nickname
+//   - ShareMessageDialog post-confirm round-trip (readOnly)
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Link, useParams } from "react-router-dom"
-import { ApiError, type Candidate, type ConfirmResponse, type MeetingDetail } from "@/lib/types"
+import {
+  ApiError,
+  type CalculateResponse,
+  type Candidate,
+  type ConfirmResponse,
+  type MeetingDetail,
+  type RecommendResponse,
+} from "@/lib/types"
 import { api } from "@/lib/api"
 import { MeetingSummary } from "./meeting/MeetingSummary"
 import { JoinSection } from "./meeting/JoinSection"
@@ -22,6 +29,7 @@ import { CurrentParticipantCard } from "./meeting/CurrentParticipantCard"
 import { AvailabilitySection } from "./meeting/AvailabilitySection"
 import { TimetableSection } from "./meeting/TimetableSection"
 import { Participants } from "./meeting/Participants"
+import { RecommendCard, type RecommendCardResultState } from "./meeting/RecommendCard"
 import { ShareMessageDialog } from "@/components/ShareMessageDialog"
 import { useToast } from "@/components/ui/toast"
 import { formatKstRange } from "@/lib/datetime"
@@ -47,6 +55,17 @@ export default function MeetingPage() {
     message: string
     rangeLabel: string
   }>({ open: false, message: "", rangeLabel: "" })
+
+  // Phase C3 — result state lives at the page level so RecommendCard (sidebar)
+  // and Timetable (main column) can both read it.
+  const [result, setResult] = useState<RecommendCardResultState>({ kind: "idle" })
+  const [calculating, setCalculating] = useState(false)
+  const [recommending, setRecommending] = useState(false)
+  const [resultError, setResultError] = useState<string | null>(null)
+  // Candidate the user just picked — flows down to TimetableSection which
+  // opens the ShareMessageDialog. The section clears it via onPickedHandled
+  // after consumption so re-picking the same slot is possible.
+  const [pickedCandidate, setPickedCandidate] = useState<Candidate | null>(null)
 
   const reloadMeeting = useCallback(async () => {
     if (!slug) return
@@ -146,10 +165,48 @@ export default function MeetingPage() {
     void reloadMeeting()
   }, [slug, reloadMeeting])
 
+  const handleCalculate = useCallback(async () => {
+    if (!slug) return
+    setCalculating(true)
+    setResultError(null)
+    try {
+      const res: CalculateResponse = await api.calculate(slug)
+      setResult({ kind: "calculate", response: res })
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "계산에 실패했습니다."
+      setResultError(msg)
+      toast(msg, "error")
+    } finally {
+      setCalculating(false)
+    }
+  }, [slug, toast])
+
+  const handleRecommendResult = useCallback((res: RecommendResponse) => {
+    setResult({ kind: "recommend", response: res })
+    setResultError(null)
+  }, [])
+
+  const handlePick = useCallback((candidate: Candidate) => {
+    setPickedCandidate(candidate)
+  }, [])
+
   const slugFootnote = useMemo(
     () => (meeting ? `slug: ${meeting.slug}` : null),
     [meeting],
   )
+
+  const bestSlots = useMemo(() => {
+    if (result.kind !== "recommend") return undefined
+    return (result.response.candidates ?? []).map((c) => ({
+      start: c.start,
+      end: c.end,
+    }))
+  }, [result])
+
+  const ready = useMemo(() => {
+    if (!meeting) return false
+    return meeting.is_ready_to_calculate ?? (meeting.submitted_count ?? 0) >= 1
+  }, [meeting])
 
   if (!slug) {
     return (
@@ -242,10 +299,27 @@ export default function MeetingPage() {
               refreshKey={refreshKey}
               onConfirmed={onConfirmed}
               currentNickname={participantNickname}
+              bestSlots={bestSlots}
+              pickedCandidate={pickedCandidate}
+              onPickedHandled={() => setPickedCandidate(null)}
             />
           </div>
 
           <div className="flex flex-col gap-4 lg:sticky lg:top-20">
+            <RecommendCard
+              slug={slug}
+              meeting={meeting}
+              result={result}
+              calculating={calculating}
+              recommending={recommending}
+              ready={ready}
+              resultError={resultError}
+              onCalculate={handleCalculate}
+              onRecommendResult={handleRecommendResult}
+              setRecommending={setRecommending}
+              onPick={handlePick}
+              onCancelConfirm={handleCancelConfirm}
+            />
             <Participants meeting={meeting} />
           </div>
         </div>
