@@ -344,7 +344,7 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   const dialogTitle = organizer.locator("#share-message-title")
   await expect(dialogTitle).toBeVisible({ timeout: 15_000 })
   // Pre-confirm dialog title — see ShareMessageDialog (readOnly=false).
-  await expect(dialogTitle).toHaveText("메시지 확인 후 확정")
+  await expect(dialogTitle).toHaveText("메시지 확인 후 확정해 주세요")
 
   const textarea = organizer.locator('[data-testid="share-draft-textarea"]')
   await expect(textarea).toBeVisible()
@@ -356,7 +356,7 @@ test("E1: full flow from creation through confirm in template-LLM mode", async (
   expect(message).not.toMatch(/병원|진료|데이트/)
 
   // Copy button -> clipboard stub captures the message.
-  await organizer.getByRole("button", { name: "메시지 복사" }).click()
+  await organizer.getByRole("dialog").getByRole("button", { name: "공지 복사" }).click()
   await expect(organizer.locator("text=메시지가 복사되었습니다.")).toBeVisible({
     timeout: 5_000,
   })
