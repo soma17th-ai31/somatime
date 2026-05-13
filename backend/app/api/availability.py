@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
@@ -182,21 +182,38 @@ def parse_natural_language_availability(
 
         busy_blocks, summary, recognized_phrases = _normalize_nl_parse_output(raw, meeting)
 
-        violations = _find_weekday_violations(busy_blocks, user_weekdays)
-        if not violations:
+        weekday_violations = _find_weekday_violations(busy_blocks, user_weekdays)
+        chip_intent = _extract_chip_intent(recognized_phrases)
+        intent_violations = _find_intent_violations(busy_blocks, chip_intent, meeting)
+
+        if not weekday_violations and not intent_violations:
             break
+
         if attempt == NL_PARSE_MAX_RETRIES:
             logger.info(
-                "NL parse: retry budget exhausted, dropping %d off-weekday blocks",
-                len(violations),
+                "NL parse: retry budget exhausted, weekday=%d intent=%d violations",
+                len(weekday_violations),
+                len(intent_violations),
             )
-            busy_blocks = [b for b in busy_blocks if b not in violations]
+            busy_blocks, summary = _apply_intent_repair(
+                busy_blocks, summary, chip_intent, meeting
+            )
+            busy_blocks = [b for b in busy_blocks if b not in weekday_violations]
             break
-        feedback = _format_weekday_feedback(violations, user_weekdays)
+
+        feedback_parts: list[str] = []
+        if weekday_violations:
+            feedback_parts.append(
+                _format_weekday_feedback(weekday_violations, user_weekdays)
+            )
+        if intent_violations:
+            feedback_parts.append(_format_intent_feedback(intent_violations, chip_intent))
+        feedback = "\n".join(feedback_parts)
         logger.info(
-            "NL parse: attempt %d hit %d weekday violations, retrying with feedback",
+            "NL parse: attempt %d hit weekday=%d intent=%d violations, retrying",
             attempt + 1,
-            len(violations),
+            len(weekday_violations),
+            len(intent_violations),
         )
 
     return {
@@ -380,6 +397,246 @@ def _format_weekday_feedback(
         f"사용자가 언급한 요일: {allowed}. 문제 블록 예: {examples_str}. "
         "다시 응답을 생성하되 사용자가 언급한 요일에만 busy_blocks 를 두세요."
     )
+
+
+# Intent validator: cross-check the LLM's busy_blocks against the chip
+# phrases it generated. Chips are the LLM's own summary of what it
+# understood, so a mismatch between chip ("토 전체 가능") and busy_blocks
+# (5/16 토 entirely busy) is a self-contradiction we can catch.
+
+_CHIP_AVAILABLE_MARKERS = ("가능", "있음", "비어")
+_CHIP_BUSY_MARKERS = ("불가", "안 됨", "안돼", "안되", "없음", "수업", "약속", "회의")
+_CHIP_WEEKDAY_TOKENS = {
+    0: ("월요일", "월"),
+    1: ("화요일", "화"),
+    2: ("수요일", "수"),
+    3: ("목요일", "목"),
+    4: ("금요일", "금"),
+    5: ("토요일", "토"),
+    6: ("일요일", "일"),
+}
+
+
+def _chip_has_weekday(chip: str, wd: int) -> bool:
+    """Match '월' but not inside '5월'. The short form is allowed because
+    chips are short and the LLM-generated pattern is consistent.
+    """
+    full, short = _CHIP_WEEKDAY_TOKENS[wd]
+    if full in chip:
+        return True
+    # Bare '월' etc — require it not to be preceded by a digit (which would
+    # mean it's a month token like '5월').
+    pattern = re.compile(rf"(?<![0-9]){short}(?![요])")
+    return bool(pattern.search(chip))
+
+
+def _extract_chip_intent(phrases: list[str]) -> dict[int, str]:
+    """Return ``{weekday: "available" | "busy"}`` for every chip that
+    names a single weekday with an unambiguous intent verb. Chips
+    naming multiple weekdays or no clear verb are skipped.
+    """
+    intent: dict[int, str] = {}
+    for chip in phrases:
+        is_available = any(m in chip for m in _CHIP_AVAILABLE_MARKERS)
+        is_busy = any(m in chip for m in _CHIP_BUSY_MARKERS)
+        # Need exactly one direction
+        if is_available == is_busy:
+            continue
+        verb = "available" if is_available else "busy"
+        # Special case: "전부 가능", "전체 가능" with no weekday → skip
+        weekdays_in_chip = [wd for wd in range(7) if _chip_has_weekday(chip, wd)]
+        if len(weekdays_in_chip) != 1:
+            continue
+        wd = weekdays_in_chip[0]
+        # If two chips conflict on the same weekday, drop both
+        prior = intent.get(wd)
+        if prior is not None and prior != verb:
+            intent.pop(wd, None)
+            continue
+        intent[wd] = verb
+    return intent
+
+
+def _block_covers_full_day(start_dt: datetime, end_dt: datetime) -> bool:
+    """Heuristic: a busy block that spans most of one day (>= 8 hours)
+    is treated as a 'full day' block. Used to detect intent collisions
+    where the LLM marked a 'available' weekday as wholly busy.
+    """
+    if start_dt.date() != end_dt.date() and end_dt - start_dt < timedelta(hours=24):
+        # Cross-midnight short block — not a full day
+        return False
+    duration = end_dt - start_dt
+    return duration >= timedelta(hours=8)
+
+
+def _find_intent_violations(
+    busy_blocks: list[dict],
+    chip_intent: dict[int, str],
+    meeting: Meeting,
+) -> list[dict]:
+    """Detect blocks that contradict the chip intent.
+
+    Two rules:
+    1. A weekday the chips marked 'available' should not carry a
+       "full-day" busy block. Smaller busy blocks (e.g. lunch) are
+       allowed because they could co-exist with 'available' in the
+       user's wording.
+    2. A weekday the chips marked 'busy' should appear in busy_blocks
+       on at least one of that weekday's dates within the meeting. If
+       it's missing entirely we synthesize a violation (using a phantom
+       block describing the missing weekday) so the LLM can be told to
+       add it on retry.
+    """
+    from app.services.scheduler import enumerate_search_dates
+
+    violations: list[dict] = []
+
+    # Rule 1 — available weekday must not be wholly busy
+    available_wds = {wd for wd, verb in chip_intent.items() if verb == "available"}
+    for block in busy_blocks:
+        try:
+            start_dt = datetime.fromisoformat(block["start"])
+            end_dt = datetime.fromisoformat(block["end"])
+        except (KeyError, ValueError):
+            continue
+        if start_dt.weekday() in available_wds and _block_covers_full_day(start_dt, end_dt):
+            violations.append(block)
+
+    # Rule 2 — busy weekday must have at least one busy_block somewhere
+    busy_wds = {wd for wd, verb in chip_intent.items() if verb == "busy"}
+    covered_busy_wds: set[int] = set()
+    for block in busy_blocks:
+        try:
+            start_dt = datetime.fromisoformat(block["start"])
+        except (KeyError, ValueError):
+            continue
+        if start_dt.weekday() in busy_wds:
+            covered_busy_wds.add(start_dt.weekday())
+
+    missing_busy_wds = busy_wds - covered_busy_wds
+    if missing_busy_wds:
+        # Add a sentinel violation so the retry feedback can mention them.
+        meeting_dates = list(enumerate_search_dates(meeting))
+        for wd in missing_busy_wds:
+            target = next((d for d in meeting_dates if d.weekday() == wd), None)
+            if target is None:
+                continue
+            violations.append(
+                {
+                    "_missing_busy_for_weekday": wd,
+                    "_target_date": target.isoformat(),
+                }
+            )
+
+    return violations
+
+
+def _format_intent_feedback(
+    violations: list[dict],
+    chip_intent: dict[int, str],
+) -> str:
+    """Build a feedback note describing chip-vs-busy-blocks contradictions."""
+    full_day_wrong: list[str] = []
+    missing_busy: list[str] = []
+    for v in violations:
+        if "_missing_busy_for_weekday" in v:
+            wd = v["_missing_busy_for_weekday"]
+            target = v["_target_date"]
+            missing_busy.append(f"{_WEEKDAY_KO_FULL[wd]}요일 ({target})")
+        else:
+            try:
+                start_dt = datetime.fromisoformat(v["start"])
+            except (KeyError, ValueError):
+                continue
+            full_day_wrong.append(
+                f"{start_dt.date().isoformat()} ({_WEEKDAY_KO_FULL[start_dt.weekday()]})"
+            )
+
+    parts: list[str] = ["[자동 검증 피드백 — 의도 불일치]"]
+    if full_day_wrong:
+        avail_wds = ", ".join(
+            _WEEKDAY_KO_FULL[wd] for wd, verb in chip_intent.items() if verb == "available"
+        )
+        parts.append(
+            f"chip 에는 '{avail_wds}요일 가능' 으로 기록했지만 busy_blocks 가 "
+            f"해당 요일 전체에 들어갔습니다 (예: {', '.join(full_day_wrong)}). "
+            "가능한 요일은 busy_blocks 에서 제거하세요."
+        )
+    if missing_busy:
+        busy_wds_str = ", ".join(
+            _WEEKDAY_KO_FULL[wd] for wd, verb in chip_intent.items() if verb == "busy"
+        )
+        parts.append(
+            f"chip 에는 '{busy_wds_str}요일 불가' 로 기록했지만 busy_blocks 에 "
+            f"해당 요일이 누락되었습니다 (대상: {', '.join(missing_busy)}). "
+            "해당 요일 전체 (06:00~24:00) 를 busy_blocks 에 추가하세요."
+        )
+    return " ".join(parts)
+
+
+def _apply_intent_repair(
+    busy_blocks: list[dict],
+    summary: str,
+    chip_intent: dict[int, str],
+    meeting: Meeting,
+) -> tuple[list[dict], str]:
+    """Last-resort deterministic repair when retries are exhausted.
+
+    - Drop any full-day busy block on an 'available' weekday.
+    - Add a full-day busy block (06:00~24:00) for any 'busy' weekday
+      that's missing one. Uses the first meeting.date matching that
+      weekday.
+    """
+    from app.services.scheduler import enumerate_search_dates
+
+    available_wds = {wd for wd, verb in chip_intent.items() if verb == "available"}
+    busy_wds = {wd for wd, verb in chip_intent.items() if verb == "busy"}
+
+    # Rule 1 — drop full-day busy blocks on available weekdays
+    repaired: list[dict] = []
+    for block in busy_blocks:
+        try:
+            start_dt = datetime.fromisoformat(block["start"])
+            end_dt = datetime.fromisoformat(block["end"])
+        except (KeyError, ValueError):
+            repaired.append(block)
+            continue
+        if start_dt.weekday() in available_wds and _block_covers_full_day(start_dt, end_dt):
+            continue  # drop
+        repaired.append(block)
+
+    # Rule 2 — synthesize a missing busy block for each unmet busy weekday
+    covered_busy_wds: set[int] = set()
+    for block in repaired:
+        try:
+            start_dt = datetime.fromisoformat(block["start"])
+        except (KeyError, ValueError):
+            continue
+        if start_dt.weekday() in busy_wds:
+            covered_busy_wds.add(start_dt.weekday())
+
+    missing_busy_wds = busy_wds - covered_busy_wds
+    if missing_busy_wds:
+        meeting_dates = list(enumerate_search_dates(meeting))
+        added_dates: list[str] = []
+        for wd in missing_busy_wds:
+            target = next((d for d in meeting_dates if d.weekday() == wd), None)
+            if target is None:
+                continue
+            repaired.append(
+                {
+                    "start": datetime.combine(target, time(6, 0)).isoformat(),
+                    "end": datetime.combine(
+                        target + timedelta(days=1), time(0, 0)
+                    ).isoformat(),
+                }
+            )
+            added_dates.append(target.isoformat())
+        if added_dates:
+            summary = (
+                f"{summary} (자동 보정: {', '.join(added_dates)} 전체를 불가능으로 추가했습니다.)"
+            )
+    return repaired, summary
 
 
 def _strip_wrong_weekday_labels(summary: str) -> str:
