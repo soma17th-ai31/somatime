@@ -308,9 +308,9 @@ export default function CreateMeetingPage() {
                               data-testid={`location-${opt.value}`}
                               onClick={() => field.onChange(opt.value)}
                               className={cn(
-                                "rounded-sm px-3 py-1.5 text-sm font-medium transition-colors",
+                                "rounded-sm px-3 py-1.5 text-sm font-medium transition-all",
                                 active
-                                  ? "bg-secondary text-foreground shadow-sm"
+                                  ? "bg-secondary text-foreground shadow-sm ring-2 ring-primary ring-inset"
                                   : "text-muted-foreground hover:text-foreground",
                               )}
                             >
