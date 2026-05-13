@@ -50,3 +50,20 @@ class TemplateAdapter(LLMAdapter):
                 for w in chosen
             ],
         }
+
+    def parse_availability(self, text: str, meeting: Meeting) -> dict:
+        """Template fallback: natural-language parsing requires an LLM, so
+        in template mode we return an empty busy_blocks list and a summary
+        telling the user to switch input methods.
+
+        Building the privacy-safe payload here keeps any future spy/test
+        able to assert what *would* have been sent.
+        """
+        _ = self.build_availability_parse_payload(text, meeting)
+        return {
+            "busy_blocks": [],
+            "summary": (
+                "템플릿 모드에서는 자연어 파싱을 지원하지 않습니다. "
+                "수동 입력 또는 ICS 업로드를 사용해주세요."
+            ),
+        }
