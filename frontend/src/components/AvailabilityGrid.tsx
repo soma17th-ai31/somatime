@@ -197,7 +197,7 @@ export function AvailabilityGrid({
     <div
       ref={containerRef}
       data-testid="availability-grid"
-      className="max-h-[520px] touch-pan-y overflow-auto overscroll-contain rounded-xl border border-border bg-card p-2"
+      className="max-h-[520px] overflow-auto overscroll-contain rounded-xl border border-border bg-card p-2"
       onScroll={handleScroll}
       onTouchMove={handleTouchMove}
     >

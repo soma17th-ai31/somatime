@@ -305,7 +305,7 @@ export function Timetable({
           </div>
         </div>
       <div
-        className="max-h-[520px] touch-pan-y overflow-auto overscroll-contain bg-card p-2"
+        className="max-h-[520px] overflow-auto overscroll-contain bg-card p-2"
         data-testid="timetable-horizontal"
         onScroll={handleScroll}
       >
